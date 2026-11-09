@@ -11,6 +11,8 @@ services:
     environment:
       HOSTNAME: 0.0.0.0
       PORT: "3000"
+    command:
+      ["npx", "expo", "start", "--web", "--port", "3000", "--host", "lan"]
     ports:
       - "127.0.0.1:3000:3000"
     networks:
@@ -30,9 +32,9 @@ services:
         - action: rebuild
           path: ./package-lock.json
         - action: rebuild
-          path: ./next.config.ts
+          path: ./app.json
         - action: rebuild
-          path: ./postcss.config.mjs
+          path: ./metro.config.cjs
         - action: rebuild
           path: ./tsconfig.json
         - action: rebuild

@@ -1,0 +1,44 @@
+name: Delivery
+
+# This workflow and its helpers run from the default branch, never a PR checkout.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+jobs:
+  gate:
+    if: vars.DELIVERY_ENABLED == 'true' && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      target: ${{ steps.gate.outputs.target }}
+      sha: ${{ steps.gate.outputs.sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.workflow_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+      - id: gate
+        run: node scripts/delivery-guard.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  release:
+    needs: gate
+    uses: ./.github/workflows/release.yml
+    with:
+      sha: ${{ needs.gate.outputs.sha }}
+      target: ${{ needs.gate.outputs.target }}
+    secrets:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}

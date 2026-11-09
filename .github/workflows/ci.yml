@@ -1,0 +1,136 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      [
+        main,
+        lkluge/ci-vercel-delivery,
+        lkluge/auth-session-flow,
+        lkluge/family-circle-membership,
+        lkluge/ride-planning,
+        lkluge/driver-confirmation,
+        lkluge/ride-handoffs,
+        lkluge/driver-replacements,
+      ]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: web
+    # Playwright 1.58.2 supports Ubuntu 24.04; ubuntu-latest now uses 26.04.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      EXPO_NO_TELEMETRY: "1"
+      EXPO_PUBLIC_SUPABASE_URL: https://ci-placeholder.invalid
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_placeholder
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          # Validate the PR head itself: this is the revision delivery uploads.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+      - run: npm ci
+      - name: Preserve inherited migration history
+        run: node scripts/check-migration-history.mjs
+        env:
+          MIGRATION_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+      - run: npm run check
+      - name: Install Auth browser
+        run: npx playwright install --with-deps chromium
+      - name: Clean and upgrade migrations, generated types, real RLS and Auth/membership/ride/assignment/handoff/replacement browsers
+        run: npm run test:auth
+      - name: Verify pinned deployment CLI without credentials
+        run: |
+          npm install --prefix "$RUNNER_TEMP/vercel-cli" --ignore-scripts --no-audit --no-fund vercel@65.4.0
+          node scripts/verify-vercel-cli.mjs "$RUNNER_TEMP/vercel-cli/node_modules/vercel/dist/index.js"
+      - uses: docker/setup-compose-action@2fe291b7677a45ee1269ec56a42604c143505e7e # v1
+        with:
+          version: v2.40.3
+      - run: bash scripts/validate-compose.sh
+      - run: bash scripts/container-smoke.sh
+
+  ios:
+    name: ios
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      EXPO_NO_DOTENV: "1"
+      EXPO_NO_TELEMETRY: "1"
+      EXPO_PUBLIC_SUPABASE_URL: https://ci-placeholder.invalid
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_placeholder
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .nvmrc
+      - run: npm ci
+      - run: npm run test:components
+      - run: npm run build:ios
+      - name: Install native UI test runner
+        run: brew install mobile-dev-inc/tap/maestro
+      - name: Record native toolchain
+        id: native-toolchain
+        run: echo "xcode=$(xcodebuild -version | tr -cs 'A-Za-z0-9' '-')" >> "$GITHUB_OUTPUT"
+      - name: Restore native build cache
+        id: native-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ios/Pods
+            ~/Library/Caches/CocoaPods
+            ${{ runner.temp }}/pool-ios-derived-data
+          key: native-${{ runner.os }}-${{ runner.arch }}-${{ steps.native-toolchain.outputs.xcode }}-${{ hashFiles('package-lock.json', 'app.json', 'app.config.*', 'metro.config.cjs', '.nvmrc') }}
+      - name: Build and launch ad-hoc signed simulator application
+        run: node scripts/ios-test.mjs --smoke
+        env:
+          POOL_IOS_DERIVED_DATA: ${{ runner.temp }}/pool-ios-derived-data
+      - name: Retain native UI diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ios-diagnostics
+          path: |
+            test-results/ios
+            ~/.maestro/tests
+            pool-ios-*.png
+          include-hidden-files: true
+          retention-days: 5
+          if-no-files-found: warn
+      - name: Save native build cache
+        if: ${{ always() && steps.native-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ios/Pods
+            ~/Library/Caches/CocoaPods
+            ${{ runner.temp }}/pool-ios-derived-data
+          key: ${{ steps.native-cache.outputs.cache-primary-key }}
+
+  checks:
+    name: checks
+    if: ${{ always() }}
+    needs: [web, ios]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require both platforms
+        env:
+          WEB_RESULT: ${{ needs.web.result }}
+          IOS_RESULT: ${{ needs.ios.result }}
+        run: test "$WEB_RESULT" = success && test "$IOS_RESULT" = success

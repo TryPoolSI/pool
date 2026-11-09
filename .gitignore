@@ -2,6 +2,8 @@ node_modules/
 .next/
 out/
 coverage/
+playwright-report/
+test-results/
 *.tsbuildinfo
 next-env.d.ts
 .env*
@@ -9,3 +11,17 @@ next-env.d.ts
 .vercel/
 .DS_Store
 npm-debug.log*
+
+.expo/
+dist/
+dist-ios/
+/ios/
+/android/
+expo-env.d.ts
+
+# Generated visual comparison artifacts
+/docs/*screenshots/
+/docs/v3-comparison.html
+/docs/expo-migration/after/
+/docs/expo-migration/baseline/
+/docs/expo-migration/comparison.html

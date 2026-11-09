@@ -1,0 +1,12 @@
+Pool Pool home Link
+Create your Pool account Heading
+For adults coordinating family rides.
+Email address
+Email address Text field Double tap to edit.
+Password
+Password Secure text field Double tap to edit.
+Use 12–128 characters for your password.
+I am at least 18 years old. checkbox, unchecked
+I am at least 18 years old.
+Create account Button
+Already have an account? Sign in Link

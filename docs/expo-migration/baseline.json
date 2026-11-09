@@ -1,0 +1,82 @@
+{
+  "baseline": "85ed3c5f484a600d1d1eaebf67861ef85adc4469",
+  "routes": [
+    "/",
+    "/app",
+    "/app/attention",
+    "/app/children",
+    "/app/circles/[id]",
+    "/app/driving",
+    "/app/families/[id]",
+    "/app/invitations",
+    "/app/rides/[id]",
+    "/app/rides/new",
+    "/app/schedule",
+    "/app/vehicles",
+    "/auth/confirm",
+    "/auth/error",
+    "/forgot-password",
+    "/reset-password",
+    "/sign-in",
+    "/sign-up"
+  ],
+  "states": [
+    "empty",
+    "uncovered",
+    "pending",
+    "confirmed",
+    "optional swap",
+    "unavailable",
+    "declined",
+    "expired",
+    "cancelled",
+    "picked up",
+    "awaiting guardian receipt",
+    "completed"
+  ],
+  "viewports": [
+    [1440, 1000],
+    [390, 844],
+    [320, 800]
+  ],
+  "commands": {
+    "membership-actions": [
+      "create-family",
+      "create-circle",
+      "create-invitation",
+      "preview-invitation",
+      "accept-invitation",
+      "preview-invitation",
+      "revoke-invitation",
+      "remove-guardian",
+      "remove-family"
+    ],
+    "handoff-actions": [
+      "designateRecipient",
+      "designateRecipient",
+      "recordPickup",
+      "reportArrival",
+      "confirmHandoff",
+      "designateRecipient"
+    ],
+    "ride-actions": [
+      "saveOwnChild",
+      "createRide",
+      "respondToRideInvitation",
+      "setOwnRideRiders",
+      "cancelRide"
+    ],
+    "driver-actions": [
+      "saveVehicle",
+      "proposeDriver",
+      "requestReplacement",
+      "requestReplacement",
+      "acceptDriverProposal",
+      "consentForOwnChildren",
+      "revokeOwnConsent",
+      "declineDriverProposal",
+      "cancelDriverProposal",
+      "withdrawDriver"
+    ]
+  }
+}

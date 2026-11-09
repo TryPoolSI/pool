@@ -1,0 +1,33 @@
+appId: dev.pool.prototype
+---
+- launchApp:
+    clearState: true
+    clearKeychain: true
+- extendedWaitUntil:
+    visible:
+      id: brand
+    timeout: 60000
+- openLink: pool:///sign-up
+- tapOn:
+    text: "^Open$"
+    optional: true
+- extendedWaitUntil:
+    visible: Create your Pool account
+    timeout: 60000
+- assertVisible: Email address
+- assertVisible: Password
+- assertVisible: I am at least 18 years old.
+- takeScreenshot: pool-ios-signup
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: brand
+    timeout: 60000
+- openLink: pool:///sign-in
+- tapOn:
+    text: "^Open$"
+    optional: true
+- extendedWaitUntil:
+    visible: Sign in to Pool
+    timeout: 60000

@@ -1,5 +1,5 @@
 .git
-.github
+# Workflow definitions contain no credentials; keep them for delivery guard tests.
 .agents
 .codex
 .aws
@@ -18,3 +18,9 @@ supabase
 docs
 README.md
 mobile
+
+.expo
+dist
+dist-ios
+ios
+android

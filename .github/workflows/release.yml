@@ -1,0 +1,115 @@
+name: Serialized release
+
+# Only Delivery calls this after its secretless admission succeeds.
+on:
+  workflow_call:
+    inputs:
+      sha:
+        required: true
+        type: string
+      target:
+        required: true
+        type: string
+    secrets:
+      VERCEL_TOKEN:
+        required: true
+      VERCEL_AUTOMATION_BYPASS_SECRET:
+        required: false
+      # Supplied by each job's protected environment, never repository-wide.
+      MIGRATION_DATABASE_URL:
+        required: false
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+# Keep one lock across both protected environments and remote builds/promotion.
+# Queue eligible runs instead of allowing a preview to evict pending main.
+concurrency:
+  group: pool-delivery
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  test:
+    if: github.event_name == 'workflow_run'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: preview
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.workflow_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+      - name: Install isolated delivery tool (no deployment credentials)
+        run: npm install --prefix "$RUNNER_TEMP/vercel-cli" --ignore-scripts --no-audit --no-fund vercel@65.4.0
+      - name: Verify pinned CLI without deployment credentials
+        run: node scripts/verify-vercel-cli.mjs "$RUNNER_TEMP/vercel-cli/node_modules/vercel/dist/index.js"
+      - name: Install trusted migration tool without credentials
+        run: npm install --prefix "$RUNNER_TEMP/migration-tool" --ignore-scripts --no-audit --no-fund pg@8.16.3
+      - name: Migrate reviewed test schema, then deliver
+        run: node scripts/deliver.mjs preview
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ inputs.sha }}
+          DELIVERY_TARGET: ${{ vars.DELIVERY_TARGET }}
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
+          TEST_SUPABASE_URL: ${{ vars.TEST_SUPABASE_URL }}
+          PRODUCTION_SUPABASE_URL: ${{ vars.PRODUCTION_SUPABASE_URL }}
+          TEST_VERCEL_PROJECT_ID: ${{ vars.TEST_VERCEL_PROJECT_ID }}
+          TEST_VERCEL_ORG_ID: ${{ vars.TEST_VERCEL_ORG_ID }}
+          PRODUCTION_VERCEL_PROJECT_ID: ${{ vars.PRODUCTION_VERCEL_PROJECT_ID }}
+          PRODUCTION_VERCEL_ORG_ID: ${{ vars.PRODUCTION_VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+
+  production:
+    needs: test
+    if: inputs.target == 'production'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.workflow_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+      - name: Install isolated delivery tool (no deployment credentials)
+        run: npm install --prefix "$RUNNER_TEMP/vercel-cli" --ignore-scripts --no-audit --no-fund vercel@65.4.0
+      - name: Verify pinned CLI without deployment credentials
+        run: node scripts/verify-vercel-cli.mjs "$RUNNER_TEMP/vercel-cli/node_modules/vercel/dist/index.js"
+      - name: Install trusted migration tool without credentials
+        run: npm install --prefix "$RUNNER_TEMP/migration-tool" --ignore-scripts --no-audit --no-fund pg@8.16.3
+      - name: Migrate reviewed production schema, then stage, smoke and promote
+        run: node scripts/deliver.mjs production
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ inputs.sha }}
+          DELIVERY_TARGET: ${{ vars.DELIVERY_TARGET }}
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
+          TEST_SUPABASE_URL: ${{ vars.TEST_SUPABASE_URL }}
+          PRODUCTION_SUPABASE_URL: ${{ vars.PRODUCTION_SUPABASE_URL }}
+          TEST_VERCEL_PROJECT_ID: ${{ vars.TEST_VERCEL_PROJECT_ID }}
+          TEST_VERCEL_ORG_ID: ${{ vars.TEST_VERCEL_ORG_ID }}
+          PRODUCTION_VERCEL_PROJECT_ID: ${{ vars.PRODUCTION_VERCEL_PROJECT_ID }}
+          PRODUCTION_VERCEL_ORG_ID: ${{ vars.PRODUCTION_VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          PRODUCTION_URL: ${{ vars.PRODUCTION_URL }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}

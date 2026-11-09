@@ -13,5 +13,11 @@ next-env.d.ts
 *.log
 sites
 exports
-supabase
-mobile
+/supabase
+/mobile
+
+.expo
+dist
+dist-ios
+ios
+android
