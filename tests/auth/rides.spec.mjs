@@ -57,7 +57,7 @@ async function child(page, name) {
   await closeAction(page, `Edit ${name}`);
   return childId;
 }
-async function plan(page, direction) {
+async function plan(page, direction, rideDate) {
   await visit(page, "/app/rides/new");
   await page.getByLabel("Travel direction").selectOption(direction);
   await page
@@ -75,10 +75,10 @@ async function plan(page, direction) {
   await page.getByLabel("IANA timezone").fill("America/Denver");
   await page
     .getByLabel("Pickup time", { exact: true })
-    .fill(direction === "outbound" ? "2027-11-07T01:30" : "2027-11-07T15:00");
+    .fill(`${rideDate}T${direction === "outbound" ? "01:30" : "15:00"}`);
   await page
     .getByLabel("Drop-off time", { exact: true })
-    .fill(direction === "outbound" ? "2027-11-07T02:30" : "2027-11-07T16:00");
+    .fill(`${rideDate}T${direction === "outbound" ? "02:30" : "16:00"}`);
   await page.getByLabel("Creator child", { exact: true }).check();
   await page.getByLabel("Invited browser family", { exact: true }).check();
   if (direction === "outbound") {
@@ -161,7 +161,12 @@ test("R4 real multi-session planning, private offers, endpoint denials, enrollme
     });
     expect(foreign.ok()).toBe(false);
     expect((await foreign.json()).code).toBe("PT404");
-    const rideUrl = await plan(creator.page, "outbound");
+    // Use Denver's fall-back Sunday beyond the 366-day attention window.
+    const rideYear = new Date().getUTCFullYear() + 2;
+    const fallBackSunday = new Date(Date.UTC(rideYear, 10, 1));
+    fallBackSunday.setUTCDate(1 + ((7 - fallBackSunday.getUTCDay()) % 7));
+    const rideDate = fallBackSunday.toISOString().slice(0, 10);
+    const rideUrl = await plan(creator.page, "outbound", rideDate);
     await visit(other.page, rideUrl);
     await expect(
       other.page.getByText("Join with your family to view driver status", {
@@ -306,10 +311,10 @@ test("R4 real multi-session planning, private offers, endpoint denials, enrollme
     await expect(
       other.page.getByText("101 Secret Pickup, side door", { exact: true }),
     ).toBeVisible();
-    await plan(creator.page, "return");
+    await plan(creator.page, "return", rideDate);
     await visit(
       creator.page,
-      "/app/schedule?date=2027-11-07&timezone=America%2FDenver",
+      `/app/schedule?date=${rideDate}&timezone=America%2FDenver`,
     );
     await expect(creator.page.getByRole("listitem")).toHaveCount(2);
     await expect(

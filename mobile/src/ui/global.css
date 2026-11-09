@@ -1,0 +1,54 @@
+@font-face {
+  font-family: "DM Sans";
+  src: url("/fonts/dm-sans.ttf") format("truetype");
+  font-weight: 100 1000;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Manrope";
+  src: url("/fonts/manrope.ttf") format("truetype");
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+}
+html {
+  color-scheme: light;
+  font-family: "DM Sans", sans-serif;
+}
+body {
+  margin: 0;
+  font-family: "DM Sans", sans-serif;
+}
+:focus-visible {
+  outline: 3px solid #537dce;
+  outline-offset: 3px;
+}
+.pool-skip-link {
+  position: fixed;
+  top: 10px;
+  left: 16px;
+  transform: translateY(-200%);
+  padding: 12px;
+  background: white;
+  color: #255741;
+  z-index: 1000;
+}
+.pool-skip-link:focus {
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+@media (forced-colors: active) {
+  [role="button"],
+  [role="checkbox"] {
+    border: 1px solid CanvasText;
+  }
+}

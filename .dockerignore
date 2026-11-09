@@ -17,6 +17,7 @@ exports
 supabase
 docs
 README.md
+mobile
 
 .expo
 dist

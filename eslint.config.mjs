@@ -10,6 +10,7 @@ export default [
       "android/**",
       "sites/**",
       "exports/**",
+      "mobile/**",
       "supabase/.temp/**",
     ],
   },
