@@ -1,3 +1,4 @@
+import { upcomingRideFields } from "../../scripts/auth-test-dates.mjs";
 import { replayDenied } from "./rpc.mjs";
 import {
   expandDetails,
@@ -158,14 +159,15 @@ test("R7 real adults preserve optional swaps, reset unavailable consent and pers
     await vehicle(a.page, "R7 candidate car");
     await vehicle(d.page, "R7 original van");
     await visit(a.page, "/app/rides/new");
+    const rideTimes = upcomingRideFields();
     for (const [label, value] of [
       ["Pickup summary", "R7 neighborhood"],
       ["Drop-off summary", "R7 activity"],
       ["Exact pickup", "Private R7 pickup"],
       ["Exact drop-off", "Private R7 destination"],
       ["IANA timezone", "UTC"],
-      ["Pickup time", "2028-09-01T14:00"],
-      ["Drop-off time", "2028-09-01T15:00"],
+      ["Pickup time", rideTimes.pickup],
+      ["Drop-off time", rideTimes.dropoff],
     ])
       await a.page.getByLabel(label, { exact: true }).fill(value);
     await a.page.getByLabel("R7 child A", { exact: true }).check();
@@ -546,7 +548,7 @@ test("R7 real adults preserve optional swaps, reset unavailable consent and pers
         name: /Report pickup|Report arrival|Withdraw as driver/,
       }),
     ).toHaveCount(0);
-    await visit(a.page, "/app/schedule?date=2028-09-01&timezone=UTC");
+    await visit(a.page, `/app/schedule?date=${rideTimes.date}&timezone=UTC`);
     await expect(
       a.page.getByText("Trip driver: R7 original driver", { exact: true }),
     ).toBeVisible();

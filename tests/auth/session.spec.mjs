@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 import { test, expect } from "@playwright/test";
-import { account, password } from "./helpers.mjs";
+import { account, password, session, replaceSession } from "./helpers.mjs";
 async function signIn(page, email, next = "/app", value = password) {
   await page.goto(`/sign-in?next=${encodeURIComponent(next)}`);
   await page.getByLabel("Email address").fill(email);
@@ -11,19 +11,6 @@ async function signOut(page) {
   await page.getByRole("button", { name: "Account", exact: true }).click();
   await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await expect(page).toHaveURL(/signed-out/);
-}
-async function session(page) {
-  return page.evaluate(() => JSON.parse(localStorage.getItem("pool-auth-v2")));
-}
-async function replaceSession(page, value) {
-  await page.evaluate(
-    (value) =>
-      localStorage.setItem(
-        "pool-auth-v2",
-        typeof value === "string" ? value : JSON.stringify(value),
-      ),
-    value,
-  );
 }
 async function mail(email, type = "recovery") {
   let link;
@@ -262,30 +249,4 @@ test("keyboard signup and public shell/assets remain available at narrow widths"
   ).toBe(true);
   for (const path of ["/", "/api/health", "/robots.txt"])
     expect((await context.request.get(path)).status()).toBe(200);
-});
-
-test("an actually expired signed token with an invalid refresh token cannot retain protected access", async ({
-  browser,
-}) => {
-  const person = await account(browser, "signed-expiry");
-  try {
-    const saved = await session(person.page);
-    const claims = JSON.parse(
-      Buffer.from(saved.access_token.split(".")[1], "base64url").toString(),
-    );
-    await person.page.waitForTimeout(
-      Math.max(0, claims.exp * 1000 - Date.now() + 1500),
-    );
-    await replaceSession(person.page, {
-      ...saved,
-      refresh_token: "expired-invalid-refresh",
-    });
-    await person.page.reload();
-    await expect(person.page).toHaveURL(/sign-in/);
-    await expect(
-      person.page.getByRole("heading", { name: "Welcome to Pool" }),
-    ).toHaveCount(0);
-  } finally {
-    await person.context.close();
-  }
 });

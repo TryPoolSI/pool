@@ -3,6 +3,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createClient } from "@supabase/supabase-js";
 import { chromium } from "@playwright/test";
+import { upcomingRideFields } from "./auth-test-dates.mjs";
 import {
   account,
   family,
@@ -242,6 +243,7 @@ export async function nativeJourneys({ device, run, directory }) {
     const webFamily = (
       await observer.rpc("circle_roster", { p_circle_id: circle })
     ).data.find((member) => member.family_name === "Web family").family_id;
+    const rideTimes = upcomingRideFields();
     flow([
       open("/app/rides/new"),
       ...input("Pickup summary", "Native pickup area"),
@@ -249,8 +251,8 @@ export async function nativeJourneys({ device, run, directory }) {
       ...input("Exact pickup", "101 Native pickup"),
       ...input("Exact drop-off", "202 Shared destination"),
       ...input("IANA timezone", "UTC"),
-      ...input("Pickup time", "2028-09-10T14:00"),
-      ...input("Drop-off time", "2028-09-10T15:00"),
+      ...input("Pickup time", rideTimes.pickup),
+      ...input("Drop-off time", rideTimes.dropoff),
       { tapOn: { id: `field-child_ids-${nativeChild}` } },
       { tapOn: { id: `field-invited_family_ids-${webFamily}` } },
       tap("Create ride"),

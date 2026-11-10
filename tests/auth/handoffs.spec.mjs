@@ -1,3 +1,4 @@
+import { upcomingRideFields } from "../../scripts/auth-test-dates.mjs";
 import { captureRpc, replayRpc } from "./rpc.mjs";
 import {
   visit,
@@ -86,14 +87,15 @@ test("R6: independent driver and guardians persist arrival and confirm each chil
       .click();
     await expect(d.page.getByRole("status")).toContainText("Saved");
     await visit(a.page, "/app/rides/new");
+    const rideTimes = upcomingRideFields();
     for (const [label, value] of [
       ["Pickup summary", "Handoff neighborhood"],
       ["Drop-off summary", "Handoff activity"],
       ["Exact pickup", "111 Handoff pickup"],
       ["Exact drop-off", "222 Handoff destination"],
       ["IANA timezone", "UTC"],
-      ["Pickup time", "2027-09-02T14:00"],
-      ["Drop-off time", "2027-09-02T15:00"],
+      ["Pickup time", rideTimes.pickup],
+      ["Drop-off time", rideTimes.dropoff],
     ])
       await a.page.getByLabel(label, { exact: true }).fill(value);
     await a.page.getByLabel("Handoff child A", { exact: true }).check();

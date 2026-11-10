@@ -132,3 +132,17 @@ export async function refresh(page) {
   await expandDetails(page);
   return response;
 }
+
+export async function session(page) {
+  return page.evaluate(() => JSON.parse(localStorage.getItem("pool-auth-v2")));
+}
+export async function replaceSession(page, value) {
+  await page.evaluate(
+    (value) =>
+      localStorage.setItem(
+        "pool-auth-v2",
+        typeof value === "string" ? value : JSON.stringify(value),
+      ),
+    value,
+  );
+}

@@ -19,6 +19,11 @@ import {
 } from "./helpers.mjs";
 import { captureState } from "./presentation.mjs";
 import { test, expect } from "@playwright/test";
+
+// This past Denver fall-back day exercises the repeated hour and stays
+// outside Attention's upcoming window.
+const rideDate = "2021-11-07";
+
 async function joinCircle(inviter, recipient, circleUrl, familyName) {
   await visit(inviter.page, circleUrl);
   const link = await invitation(inviter.page, recipient.email, "circle");
@@ -75,10 +80,10 @@ async function plan(page, direction) {
   await page.getByLabel("IANA timezone").fill("America/Denver");
   await page
     .getByLabel("Pickup time", { exact: true })
-    .fill(direction === "outbound" ? "2027-11-07T01:30" : "2027-11-07T15:00");
+    .fill(direction === "outbound" ? `${rideDate}T01:30` : `${rideDate}T15:00`);
   await page
     .getByLabel("Drop-off time", { exact: true })
-    .fill(direction === "outbound" ? "2027-11-07T02:30" : "2027-11-07T16:00");
+    .fill(direction === "outbound" ? `${rideDate}T02:30` : `${rideDate}T16:00`);
   await page.getByLabel("Creator child", { exact: true }).check();
   await page.getByLabel("Invited browser family", { exact: true }).check();
   if (direction === "outbound") {
@@ -309,7 +314,7 @@ test("R4 real multi-session planning, private offers, endpoint denials, enrollme
     await plan(creator.page, "return");
     await visit(
       creator.page,
-      "/app/schedule?date=2027-11-07&timezone=America%2FDenver",
+      `/app/schedule?date=${rideDate}&timezone=America%2FDenver`,
     );
     await expect(creator.page.getByRole("listitem")).toHaveCount(2);
     await expect(
@@ -322,7 +327,7 @@ test("R4 real multi-session planning, private offers, endpoint denials, enrollme
       creator.page.getByText("Return · Pickup:", { exact: false }),
     ).toBeVisible();
     await captureState(creator.page, "schedule");
-    await visit(creator.page, "/app/schedule?date=2028-06-01&timezone=UTC");
+    await visit(creator.page, "/app/schedule?date=2021-11-15&timezone=UTC");
     await expect(
       creator.page.getByText("No rides in this week.", { exact: false }),
     ).toBeVisible();
@@ -344,8 +349,8 @@ test("R4 real multi-session planning, private offers, endpoint denials, enrollme
       }),
     ).toBeVisible();
     await expect(
-      creator.page.getByText("Morning area → Activity area", { exact: true }),
-    ).toHaveCount(0);
+      creator.page.getByText("No items in this view", { exact: true }),
+    ).toBeVisible();
     await visit(creator.page, rideUrl);
     // Use keyboard and a narrow screen for the final irreversible-in-app operation.
     await creator.page.setViewportSize({ width: 390, height: 844 });
