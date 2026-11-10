@@ -467,7 +467,7 @@ test("workflow wiring keeps untrusted checks secretless and uses one non-cancell
   const iosSteps = ci.jobs.ios.steps;
   assert.ok(!iosSteps.some((step) => step.run === "npm run build:ios"));
   const smoke = iosSteps.find((step) => step.id === "native-smoke");
-  assert.match(smoke.run, /args=\(--smoke --parallel-boot\)/);
+  assert.match(smoke.run, /args=\(--smoke\)/);
   assert.match(
     smoke.run,
     /if \[\[ "\$NATIVE_CACHE_HIT" == true \]\]; then\s+args\+=\(--reuse-project\)/,
@@ -481,6 +481,7 @@ test("workflow wiring keeps untrusted checks secretless and uses one non-cancell
   const save = iosSteps.find((step) => step.uses?.startsWith("actions/cache/save"));
   assert.equal(restore.with["restore-keys"], undefined);
   assert.equal(save.with.path, restore.with.path);
+  assert.ok(restore.with.path.includes("/pool-ios-compilation-cache"));
   assert.ok(!restore.with.path.includes(".xcode.env.local"));
   assert.equal(
     save.if,

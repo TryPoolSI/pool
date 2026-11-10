@@ -1,4 +1,4 @@
-import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   closeSync,
@@ -15,25 +15,11 @@ import { join, resolve } from "node:path";
 function run(command, args, options = {}) {
   return execFileSync(command, args, { stdio: "inherit", ...options });
 }
-function runAsync(command, args, options) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: "inherit", ...options });
-    let error;
-    child.once("error", (childError) => {
-      error = childError;
-    });
-    child.once("close", (status, signal) => {
-      if (error) reject(error);
-      else if (status === 0) resolve();
-      else reject(new Error(`${command} failed (${signal ?? status}).`));
-    });
-  });
-}
-async function timed(label, action) {
+function timed(label, action) {
   const started = performance.now();
   console.log(`Starting ${label}.`);
   try {
-    return await action();
+    return action();
   } finally {
     const seconds = ((performance.now() - started) / 1000).toFixed(1);
     console.log(`${label} took ${seconds}s.`);
@@ -62,17 +48,8 @@ function hasReusableCIProject() {
     )
   );
 }
-async function bootSimulator(device, signal) {
-  await timed("simulator boot and readiness", async () => {
-    if (device.state !== "Booted")
-      await runAsync("xcrun", ["simctl", "boot", device.udid], { signal });
-    await runAsync("xcrun", ["simctl", "bootstatus", device.udid, "-b"], {
-      signal,
-    });
-  });
-}
-async function buildSimulator(args, ciSmoke, signal) {
-  await timed("Xcode Release build", async () => {
+function buildSimulator(args, ciSmoke) {
+  timed("Xcode Release build", () => {
     if (!ciSmoke) {
       run("xcodebuild", ["-quiet", ...args]);
       return;
@@ -82,8 +59,7 @@ async function buildSimulator(args, ciSmoke, signal) {
     console.log(`Full Xcode build output will be retained in ${log}.`);
     const output = openSync(log, "w");
     try {
-      await runAsync("xcodebuild", ["-showBuildTimingSummary", ...args], {
-        signal,
+      run("xcodebuild", ["-showBuildTimingSummary", ...args], {
         stdio: ["ignore", output, output],
       });
     } finally {
@@ -210,7 +186,7 @@ if (!process.argv.includes("--from-harness") && !smoke) {
         rmSync("ios", { recursive: true, force: true });
         rmSync(directory, { recursive: true, force: true });
       }
-      await timed("Expo iOS prebuild", () =>
+      timed("Expo iOS prebuild", () =>
         run(process.execPath, [
           "node_modules/expo/bin/cli",
           "prebuild",
@@ -219,7 +195,7 @@ if (!process.argv.includes("--from-harness") && !smoke) {
           "--no-install",
         ]),
       );
-      await timed("CocoaPods installation", () =>
+      timed("CocoaPods installation", () =>
         run("pod", ["install"], { cwd: resolve("ios") }),
       );
     }
@@ -253,21 +229,7 @@ if (!process.argv.includes("--from-harness") && !smoke) {
       "CODE_SIGN_IDENTITY=-",
       "DEVELOPMENT_TEAM=",
     ];
-    const parallelBoot = ciSmoke && process.argv.includes("--parallel-boot");
-    if (parallelBoot) {
-      const controller = new AbortController();
-      const boot = bootSimulator(device, controller.signal);
-      const build = buildSimulator(buildArgs, ciSmoke, controller.signal);
-      try {
-        await Promise.all([boot, build]);
-      } catch (error) {
-        controller.abort();
-        await Promise.allSettled([boot, build]);
-        throw error;
-      }
-    } else {
-      await buildSimulator(buildArgs, ciSmoke);
-    }
+    buildSimulator(buildArgs, ciSmoke);
     if (!existsSync(application))
       throw new Error("Simulator application was not built.");
     if (ciSmoke) {
@@ -282,11 +244,15 @@ if (!process.argv.includes("--from-harness") && !smoke) {
     // Xcode's local ad-hoc identity needs no certificate or provisioning profile.
     run("codesign", ["--verify", "--deep", "--strict", application]);
     run("codesign", ["--display", "--entitlements", ":-", application]);
-    if (!parallelBoot) await bootSimulator(device);
-    await timed("simulator app installation", () =>
+    timed("simulator boot and readiness", () => {
+      if (device.state !== "Booted")
+        run("xcrun", ["simctl", "boot", device.udid]);
+      run("xcrun", ["simctl", "bootstatus", device.udid, "-b"]);
+    });
+    timed("simulator app installation", () =>
       run("xcrun", ["simctl", "install", device.udid, application]),
     );
-    await timed("Maestro smoke command", () =>
+    timed("Maestro smoke command", () =>
       run("maestro", ["--device", device.udid, "test", "tests/ios/smoke.yaml"]),
     );
     if (!smoke) {
