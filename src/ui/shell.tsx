@@ -23,10 +23,11 @@ import { AuthForm } from "@/features/auth/auth-form";
 import { ActionDialog } from "@/features/app/action-dialog";
 import Link from "./link";
 import { colors, styles } from "./styles";
+const homePath = "/app";
 const destinations = [
-  ["/app/attention", "Today", "home"],
+  [homePath, "Home", "home"],
+  ["/app/attention", "Today", "check"],
   ["/app/schedule", "Schedule", "calendar"],
-  ["/app", "My circle", "users"],
   ["/app/driving", "Driving", "activity"],
 ];
 const setup = [
@@ -34,6 +35,13 @@ const setup = [
   ["/app/vehicles", "Vehicles", "car"],
   ["/app/invitations", "Invitations", "shield"],
 ];
+function ApplicationHomeLink({ compact = false }: { compact?: boolean }) {
+  return (
+    <Link href={homePath} aria-label="Pool home">
+      <Brand compact={compact} />
+    </Link>
+  );
+}
 function NavigationLinks({ mobile = false }: { mobile?: boolean }) {
   const pathname = usePathname();
   return (
@@ -43,9 +51,7 @@ function NavigationLinks({ mobile = false }: { mobile?: boolean }) {
       style={{ flexDirection: mobile ? "row" : "column", gap: 7 }}
     >
       {destinations.map(([href, label, icon]) => {
-        const current =
-          pathname === href ||
-          (href === "/app" && /\/app\/(families|circles)/.test(pathname));
+        const current = pathname === href;
         return (
           <Link
             key={href}
@@ -179,9 +185,7 @@ export function ApplicationShell({ children }: { children: ReactNode }) {
               flexGrow: 1,
             }}
           >
-            <Link href="/app/attention" aria-label="Pool home">
-              <Brand />
-            </Link>
+            <ApplicationHomeLink />
             <View
               style={{
                 padding: 14,
@@ -273,14 +277,20 @@ export function ApplicationShell({ children }: { children: ReactNode }) {
                   <Text style={[styles.text, { fontSize: 26 }]}>‹</Text>
                 </Pressable>
               )}
-            <Text
-              style={[
-                styles.text,
-                { fontSize: 12, color: colors.muted, flex: 1 },
-              ]}
-            >
-              Your family / {label}
-            </Text>
+            {mobile ? (
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <ApplicationHomeLink compact />
+              </View>
+            ) : (
+              <Text
+                style={[
+                  styles.text,
+                  { fontSize: 12, color: colors.muted, flex: 1 },
+                ]}
+              >
+                Your family / {label}
+              </Text>
+            )}
             {!mobile && <Avatar name={context.data?.name ?? "Your account"} />}
             {width > 1200 && (
               <Text style={[styles.text, { fontSize: 12 }]}>

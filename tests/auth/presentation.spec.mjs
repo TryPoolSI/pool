@@ -18,6 +18,25 @@ async function accessible(page) {
     ),
   ).toBe(true);
 }
+async function checkHomeLogo(page, navigation) {
+  const home = navigation.getByRole("link", { name: "Home", exact: true });
+  const logo = page.getByRole("link", { name: "Pool home", exact: true });
+  for (const [label, path] of [
+    ["Today", "/app/attention"],
+    ["Schedule", "/app/schedule"],
+  ]) {
+    await navigation.getByRole("link", { name: label, exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`${path}$`));
+    await expect(home).not.toHaveAttribute("aria-current", "page");
+    await expect(logo).toHaveAttribute("href", "/app");
+    await logo.click();
+    await expect(page).toHaveURL(/\/app$/);
+    await expect(home).toHaveAttribute("aria-current", "page");
+    await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`${path}$`));
+  }
+}
+
 test("R8 shared layouts retain desktop composition, mobile navigation, keyboard dialogs and saved outcomes", async ({
   browser,
 }) => {
@@ -63,8 +82,15 @@ test("R8 shared layouts retain desktop composition, mobile navigation, keyboard 
     await expect(page.getByTestId("week-day")).toHaveCount(7);
     await accessible(page);
     await captureState(page, "schedule");
+    await page.setViewportSize({ width: 320, height: 844 });
+    const phoneNav = page.getByRole("navigation", { name: "Phone navigation" });
+    await checkHomeLogo(page, phoneNav);
+    await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/app");
     await family(page, "Presentation family", "Presentation guardian");
+    await expect(
+      phoneNav.getByRole("link", { name: "Home", exact: true }),
+    ).not.toHaveAttribute("aria-current", "page");
     await expect(page.getByRole("heading", { level: 1 })).toBeInViewport();
     await accessible(page);
     await captureState(page, "family");
@@ -149,15 +175,16 @@ test("R8 shared layouts retain desktop composition, mobile navigation, keyboard 
     await expect(page).toHaveURL(/\/app$/);
     await page.goForward();
     await expect(page).toHaveURL(/\/app\/schedule$/);
-    await sidebar.getByRole("link", { name: "My circle", exact: true }).click();
+    await checkHomeLogo(page, sidebar);
+    await sidebar.getByRole("link", { name: "Home", exact: true }).click();
     await expect(page).toHaveURL(/\/app$/);
-    await openAction(page, "Create a family");
-    await page.getByLabel("Family name", { exact: true }).fill(" ");
-    await page.getByLabel("Your display name").fill("Presentation guardian");
-    await page
+    const familyDialog = await openAction(page, "Create a family");
+    await familyDialog.getByLabel("Family name", { exact: true }).fill(" ");
+    await familyDialog.getByLabel("Your display name").fill("Presentation guardian");
+    await familyDialog
       .getByRole("button", { name: "Create family", exact: true })
       .click();
-    await expect(page.getByRole("alert")).toBeVisible();
+    await expect(familyDialog.getByRole("alert")).toBeVisible();
     await accessible(page);
     await closeAction(page, "Create a family");
     await page.emulateMedia({ colorScheme: "dark" });

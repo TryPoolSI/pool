@@ -147,6 +147,10 @@ export async function nativeJourneys({ device, run, directory }) {
     tap("Create family"),
     tap("Open saved membership"),
     { assertVisible: "Native family" },
+    open("/app/attention"),
+    { assertVisible: "A little planning goes a long way." },
+    tap("Pool home"),
+    { assertVisible: "Your families" },
   ]);
   const signed = await observer.auth.signInWithPassword({ email, password });
   assert.equal(signed.error, null);
