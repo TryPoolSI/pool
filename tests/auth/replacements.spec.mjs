@@ -503,7 +503,7 @@ test("R7 real adults preserve optional swaps, reset unavailable consent and pers
     await replacement(a.page, "R7 Guardian A");
     await visit(d.page, ride);
     for (const name of ["R7 child A", "R7 child B"]) {
-      await report(d.page, name, "Report pickup");
+      await report(d.page, name, "Confirm pickup as driver");
       await expect(
         journey(d.page, name).getByText("Picked up", { exact: true }),
       ).toBeVisible();
@@ -521,7 +521,7 @@ test("R7 real adults preserve optional swaps, reset unavailable consent and pers
       [b, "R7 child B"],
     ]) {
       await visit(parent.page, ride);
-      await report(parent.page, name, "Confirm child received");
+      await report(parent.page, name, "Confirm handoff as guardian");
       await expect(
         journey(parent.page, name).getByText("Handoff completed", {
           exact: true,
@@ -543,7 +543,7 @@ test("R7 real adults preserve optional swaps, reset unavailable consent and pers
     ).toHaveCount(2);
     await expect(
       d.page.getByRole("button", {
-        name: /Report pickup|Report arrival|Withdraw as driver/,
+        name: /Confirm pickup as driver|Report arrival|Withdraw as driver/,
       }),
     ).toHaveCount(0);
     await visit(a.page, "/app/schedule?date=2028-09-01&timezone=UTC");

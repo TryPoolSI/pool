@@ -7,6 +7,20 @@ import { rideTime } from "@/lib/rides";
 import { HandoffForm } from "./handoff-form";
 import { Disclosure, StatusBadge } from "./presentation";
 import { Confirmation } from "./driver-form";
+
+function handoffActivityText(kind: string, actorName: string) {
+  switch (kind) {
+    case "picked_up":
+      return `${actorName} (driver) confirmed pickup`;
+    case "awaiting_handoff":
+      return `${actorName} (driver) reported arrival`;
+    case "completed":
+      return `${actorName} (receiving guardian) confirmed handoff`;
+    default:
+      return `${actorName} reported a trip update`;
+  }
+}
+
 async function loadHandoffPanel({
   rideId,
   revision,
@@ -117,6 +131,10 @@ export const HandoffPanel = createPanel(
       <UI.Heading2 id="trip-progress">Pickup and handoffs</UI.Heading2>
       <UI.Paragraph className="section-caption">
         Manually reported · Reload for updates
+      </UI.Paragraph>
+      <UI.Paragraph>
+        The driver confirms pickup for each child. The child’s designated
+        receiving guardian confirms the handoff after arrival.
       </UI.Paragraph>
       <UI.Paragraph
         role="status"
@@ -233,11 +251,11 @@ export const HandoffPanel = createPanel(
                     key={`pickup-${rider.child_id}-${h.version}`}
                     command="recordPickup"
                     fields={{ ...fields, request_id: newRequestId() }}
-                    label="Report pickup"
+                    label="Confirm pickup as driver"
                   >
                     <Confirmation>
-                      I report that I picked up {rider.display_name}. First
-                      pickup freezes this ride’s plan and responsibilities.
+                      As the driver, I confirm I picked up {rider.display_name}.
+                      First pickup freezes this ride’s plan and responsibilities.
                     </Confirmation>
                   </HandoffForm>
                 )}
@@ -261,17 +279,18 @@ export const HandoffPanel = createPanel(
                       key={`receipt-${rider.child_id}-${h.version}`}
                       command="confirmHandoff"
                       fields={{ ...fields, request_id: newRequestId() }}
-                      label="Confirm child received"
+                      label="Confirm handoff as guardian"
                     >
                       <Confirmation>
-                        I explicitly confirm that I have received{" "}
+                        As the receiving guardian, I confirm I received{" "}
                         {rider.display_name}.
                       </Confirmation>
                     </HandoffForm>
                   )}
                 {h?.status === "awaiting_handoff" && !recipient && (
                   <UI.Paragraph>
-                    Awaiting explicit receipt from {h.recipient_name}.
+                    Waiting for {h.recipient_name}, the receiving guardian, to
+                    confirm the handoff.
                   </UI.Paragraph>
                 )}
                 {(h?.picked_up_at || h?.arrived_at || h?.completed_at) && (
@@ -320,8 +339,7 @@ export const HandoffPanel = createPanel(
                   riders.data.find((r) => r.child_id === event.child_id)
                     ?.display_name
                 }
-                : {progressLabel(event.kind)} — reported by {event.actor_name}{" "}
-                at{" "}
+                : {handoffActivityText(event.kind, event.actor_name)} at{" "}
                 <UI.Inline dateTime={event.occurred_at}>
                   {rideTime(event.occurred_at, timezone)}
                 </UI.Inline>
