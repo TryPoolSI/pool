@@ -12,6 +12,23 @@ async function signOut(page) {
   await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await expect(page).toHaveURL(/signed-out/);
 }
+async function requestRecovery(page, email) {
+  await page.goto("/forgot-password");
+  await page.getByLabel("Email address").fill(email);
+  await page.getByRole("button", { name: "Send reset link" }).click();
+  await expect(page.getByRole("status")).toContainText("If an account matches");
+  return mail(email);
+}
+async function expectRecoveryRetry(page) {
+  await expect(page).toHaveURL(/auth\/error$/);
+  await page
+    .getByRole("link", { name: "Request a new password reset link" })
+    .click();
+  await expect(page).toHaveURL(/forgot-password$/);
+  await expect(
+    page.getByRole("button", { name: "Send reset link" }),
+  ).toBeEnabled();
+}
 async function mail(email, type = "recovery") {
   let link;
   await expect
@@ -85,40 +102,86 @@ test("real signup, separate sessions, token rotation, safe return paths and loca
     await two.context.close();
   }
 });
-test("recovery changes the password, signs out sessions and rejects reused links", async ({
+for (const browserState of ["signed out", "signed in as another account"]) {
+  test(`recovery works in a separate browser that is ${browserState}`, async ({
+    browser,
+  }) => {
+    const person = await account(browser, "recovery");
+    const other =
+      browserState === "signed out"
+        ? null
+        : await account(browser, "other-account");
+    const recipient = other?.context ?? (await browser.newContext());
+    const page = other?.page ?? (await recipient.newPage());
+    const newPassword = "Replacement-pool-password!";
+    try {
+      await signOut(person.page);
+      const link = await requestRecovery(person.page, person.email);
+      const url = new URL(link);
+      expect(url.origin).toBe(new URL(person.page.url()).origin);
+      expect(url.pathname).toBe("/auth/confirm");
+      expect(url.searchParams.get("type")).toBe("recovery");
+      expect(url.searchParams.get("token_hash")).toBeTruthy();
+
+      // An inbox preview may fetch the landing page before the recipient acts.
+      expect((await recipient.request.get(link)).ok()).toBe(true);
+      await page.goto(link);
+      const choosePassword = page.getByRole("button", {
+        name: "Choose a new password",
+      });
+      await expect(choosePassword).toBeVisible();
+      expect((await session(page))?.user.email ?? null).toBe(
+        other?.email ?? null,
+      );
+      await choosePassword.click();
+      await expect(page).toHaveURL(/reset-password$/);
+      expect((await session(page))?.user.email).toBe(person.email);
+      await page.getByLabel("New password", { exact: true }).fill(newPassword);
+      await page.getByLabel("Confirm new password").fill(newPassword);
+      await page.getByRole("button", { name: "Save new password" }).click();
+      await expect(page).toHaveURL(/\/sign-in\?message=password-updated$/);
+      await expect(page.getByRole("status")).toHaveText(
+        "Your password has been updated. Sign in with your new password.",
+      );
+      expect(await session(page)).toBeNull();
+
+      if (other) {
+        await signIn(page, other.email);
+        await expect(page).toHaveURL(/\/app$/);
+        await signOut(page);
+      }
+      await signIn(page, person.email);
+      await expect(page.getByRole("alert")).toContainText("Unable to sign in");
+      await signIn(page, person.email, "/app", newPassword);
+      await expect(page).toHaveURL(/\/app$/);
+
+      await page.goto(link);
+      await choosePassword.click();
+      await expectRecoveryRetry(page);
+    } finally {
+      await recipient.close();
+      await person.context.close();
+    }
+  });
+}
+
+test("expired recovery mail offers a direct way to request another link", async ({
   browser,
 }) => {
-  const person = await account(browser, "recovery");
-  const page = person.page;
+  const person = await account(browser, "expired-recovery");
+  const recipient = await browser.newContext();
   try {
-    await signOut(page);
-    await page.goto("/forgot-password");
-    await page.getByLabel("Email address").fill(person.email);
-    await page.getByRole("button", { name: "Send reset link" }).click();
-    await expect(page.getByRole("status")).toContainText(
-      "If an account matches",
-    );
-    const link = await mail(person.email);
+    await signOut(person.page);
+    const link = await requestRecovery(person.page, person.email);
+    const page = await recipient.newPage();
     await page.goto(link);
+    // The disposable browser harness sets the email OTP lifetime to 10 seconds.
+    await page.waitForTimeout(12000);
     await page.getByRole("button", { name: "Choose a new password" }).click();
-    await expect(page).toHaveURL(/reset-password$/);
-    await page
-      .getByLabel("New password", { exact: true })
-      .fill("Replacement-pool-password!");
-    await page
-      .getByLabel("Confirm new password")
-      .fill("Replacement-pool-password!");
-    await page.getByRole("button", { name: "Save new password" }).click();
-    await expect(page).toHaveURL(/password-updated/);
+    await expectRecoveryRetry(page);
     expect(await session(page)).toBeNull();
-    await signIn(page, person.email);
-    await expect(page.getByRole("alert")).toContainText("Unable to sign in");
-    await signIn(page, person.email, "/app", "Replacement-pool-password!");
-    await expect(page).toHaveURL(/\/app$/);
-    await page.goto(link);
-    await page.getByRole("button", { name: "Choose a new password" }).click();
-    await expect(page).toHaveURL(/auth\/error$/);
   } finally {
+    await recipient.close();
     await person.context.close();
   }
 });
