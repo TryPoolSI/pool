@@ -1,11 +1,16 @@
 import { Buffer } from "node:buffer";
 import { test, expect } from "@playwright/test";
-import { account, password, session, replaceSession } from "./helpers.mjs";
+import {
+  account,
+  authMail,
+  password,
+  session,
+  replaceSession,
+  submitSignIn,
+} from "./helpers.mjs";
 async function signIn(page, email, next = "/app", value = password) {
   await page.goto(`/sign-in?next=${encodeURIComponent(next)}`);
-  await page.getByLabel("Email address").fill(email);
-  await page.getByLabel("Password", { exact: true }).fill(value);
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await submitSignIn(page, email, value);
 }
 async function signOut(page) {
   await page.getByRole("button", { name: "Account", exact: true }).click();
@@ -30,29 +35,7 @@ async function expectRecoveryRetry(page) {
   ).toBeEnabled();
 }
 async function mail(email, type = "recovery") {
-  let link;
-  await expect
-    .poll(async () => {
-      const { messages } = await fetch(
-        "http://localhost:55324/api/v1/messages?limit=100",
-      ).then((r) => r.json());
-      const delivered = messages.find(
-        (m) =>
-          m.To.some((to) => to.Address === email) &&
-          m.Subject ===
-            (type === "recovery"
-              ? "Reset your Pool password"
-              : "Confirm your Pool email"),
-      );
-      if (!delivered) return false;
-      const message = await fetch(
-        `http://localhost:55324/api/v1/message/${delivered.ID}`,
-      ).then((r) => r.json());
-      link = message.HTML.match(/href="([^"]+)"/)?.[1].replaceAll("&amp;", "&");
-      return Boolean(link);
-    })
-    .toBe(true);
-  return link;
+  return (await authMail(email, type)).link;
 }
 test("real signup, separate sessions, token rotation, safe return paths and local sign-out", async ({
   browser,
@@ -239,7 +222,10 @@ test("expired mail and malformed callbacks fail without consuming a link on GET"
     await page
       .getByRole("button", { name: "Confirm email", exact: true })
       .click();
-    await expect(page).toHaveURL(/auth\/error$/);
+    await expect(page).toHaveURL(/auth\/error\?type=signup$/);
+    await page.getByRole("link", { name: "Resend confirmation email" }).click();
+    await expect(page).toHaveURL(/resend-confirmation$/);
+    await expect(page.getByLabel("Email address")).toBeVisible();
     for (const path of [
       "/auth/callback",
       "/auth/callback?error=denied&error_description=untrusted-copy",

@@ -28,15 +28,19 @@ Mutations are not automatically retried or queued offline.
 
 Adults sign up with email/password and explicit adult attestation. Passwords are
 12–128 characters; configure the hosted Supabase minimum to 12 too, since the
-public Auth API is independently reachable. Recovery responses do not disclose
-whether an email is registered, and provider errors are mapped to useful copy.
+public Auth API is independently reachable. A successful signup clears the form
+and directs users to their inbox. Sign in, Sign up, and unusable signup links
+offer an email-only resend form. Resend and recovery acknowledgments do not
+disclose whether an email is registered.
 
 The checked-in confirmation/recovery templates still use configured `.SiteURL`
 and token hashes. Opening an email link displays an explicit confirmation action;
 it does not consume the token with a GET. Only signup/recovery types are accepted.
 The web page also offers opening the equivalent `pool:///auth/confirm` route in an
 installed development app. Native cold/warm links route to the same confirmation
-screen. Used, expired or malformed links fail closed.
+screen. Signup verification keeps its session separate and opens Sign in with
+a confirmation message. Used, expired or malformed signup links offer resend
+and sign in.
 
 `/auth/callback` retains PKCE code exchange, which requires the verifier from the
 original browser/device. Return destinations are repeatedly decoded and restricted
@@ -46,8 +50,9 @@ An authenticated user can choose a new password from `/reset-password` too.
 Membership invitations remain separate email-bound, single-use capabilities in a
 URL fragment. Initial links and hash changes are retained through sign-in, removed
 from the visible address, and require separate preview and explicit acceptance.
-No preview/acceptance occurs just because a link was opened. Manually copy and
-deliver invitations; automated invitation email is not implemented.
+After confirming in another browser or device, sign in with the invited email
+and reopen the original invitation there. Manually copy and deliver invitations;
+automated invitation email is not implemented.
 
 ## Local and hosted setup
 
@@ -126,7 +131,11 @@ test deployment, give each browser profile its own authorized preview access.
    provider's accepted, delivered, deferred, bounced, or suppressed events to
    inbox, spam, or quarantine. Preserve the first attempt before retrying. If a
    dashboard send is needed for comparison, record the action and use a separate
-   disposable account. Confirm signup from the email received through the app.
+   disposable account. After the configured cooldown, request another link from
+   Pool's `/resend-confirmation` and trace `POST /auth/v1/resend` and the resulting
+   message. Open the new link in another browser, verify **Confirm email** is
+   required, and check that Sign in shows the confirmation status. Verify
+   password sign-in and replay the used link to check the resend path.
    [Supabase Auth audit logs](https://supabase.com/docs/guides/auth/audit-logs),
    [email delivery troubleshooting](https://supabase.com/kb/troubleshooting/not-receiving-auth-emails-from-the-supabase-project-OFSNzw)
 2. In browser A, request recovery from `/forgot-password` for a confirmed

@@ -1,8 +1,8 @@
-import { useLocalSearchParams } from "expo-router";
+import { Redirect, useLocalSearchParams } from "expo-router";
 import * as Linking from "expo-linking";
 import { Platform } from "react-native";
 import * as UI from "@/ui/elements";
-import { appReturnPath, emailLinkType, validTokenHash } from "@/lib/auth/paths";
+import { emailLinkType, validTokenHash } from "@/lib/auth/paths";
 import { confirmEmail } from "@/services/auth";
 import { CommandForm, Fields } from "@/ui/command-form";
 import Link from "@/ui/link";
@@ -10,9 +10,10 @@ export default function Confirm() {
   const params = useLocalSearchParams<{
     token_hash: string;
     type: string;
-    next?: string;
   }>();
   const type = emailLinkType(params.type);
+  if (type === "signup" && !validTokenHash(params.token_hash))
+    return <Redirect href="/auth/error?type=signup" />;
   if (!validTokenHash(params.token_hash) || !type)
     return (
       <>
@@ -35,7 +36,6 @@ export default function Confirm() {
         fields={{
           token_hash: params.token_hash,
           type,
-          next: appReturnPath(params.next),
         }}
         action={(values) => confirmEmail(new Fields(values))}
         label={type === "recovery" ? "Choose a new password" : "Confirm email"}

@@ -1,39 +1,77 @@
 import { expect } from "@playwright/test";
 
 export const password = "Pool-membership-browser-2026!";
-export async function account(browser, label) {
-  const context = await browser.newContext();
-  const page = await context.newPage();
-  const email = `pool-r3-${label}-${crypto.randomUUID()}@example.test`;
-  await page.goto("/sign-up");
+export async function fillSignup(page, email, value = password) {
+  await expect(
+    page.getByRole("heading", { name: "Create your Pool account" }),
+  ).toBeVisible();
   await page.getByLabel("Email address").fill(email);
-  await page.getByLabel("Password", { exact: true }).fill(password);
+  await page.getByLabel("Password", { exact: true }).fill(value);
   await page.getByLabel("I am at least 18 years old.").check();
+}
+
+export async function submitSignup(page) {
   await page
     .getByRole("button", { name: "Create account", exact: true })
     .click();
-  await expect(page.getByRole("status")).toContainText("Check your email");
-  let link;
+}
+
+export async function submitSignIn(page, email, value = password) {
+  await expect(
+    page.getByRole("heading", { name: "Sign in to Pool" }),
+  ).toBeVisible();
+  await page.getByLabel("Email address").fill(email);
+  await page.getByLabel("Password", { exact: true }).fill(value);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+}
+
+export async function authMail(email, type, previousId) {
+  const subject =
+    type === "recovery" ? "Reset your Pool password" : "Confirm your Pool email";
+  let captured;
   await expect
     .poll(async () => {
       const { messages } = await fetch(
         "http://localhost:55324/api/v1/messages?limit=100",
       ).then((r) => r.json());
-      const mail = messages.find((m) =>
-        m.To.some((to) => to.Address === email),
+      const mail = messages.find(
+        (m) =>
+          m.ID !== previousId &&
+          m.Subject === subject &&
+          m.To.some((to) => to.Address === email),
       );
       if (!mail) return false;
       const message = await fetch(
         `http://localhost:55324/api/v1/message/${mail.ID}`,
       ).then((r) => r.json());
-      link = message.HTML.match(/href="([^"]+)"/)?.[1].replaceAll("&amp;", "&");
-      return Boolean(link);
+      const link = message.HTML.match(/href="([^"]+)"/)?.[1].replaceAll(
+        "&amp;",
+        "&",
+      );
+      captured = { id: mail.ID, link };
+      return Boolean(captured.link);
     })
     .toBe(true);
+  return captured;
+}
+
+export async function account(browser, label) {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const email = `pool-r3-${label}-${crypto.randomUUID()}@example.test`;
+  await page.goto("/sign-up");
+  await fillSignup(page, email);
+  await submitSignup(page);
+  await expect(page.getByRole("status")).toContainText("Check your email");
+  const { link } = await authMail(email, "signup");
   await page.goto(link);
   await page
     .getByRole("button", { name: "Confirm email", exact: true })
     .click();
+  await expect(page.getByRole("status")).toHaveText(
+    "Email confirmed. Sign in to continue.",
+  );
+  await submitSignIn(page, email);
   await expect(page).toHaveURL(/\/app$/);
   return { context, page, email };
 }

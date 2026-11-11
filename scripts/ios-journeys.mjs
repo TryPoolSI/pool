@@ -107,13 +107,26 @@ export async function nativeJourneys({ device, run, directory }) {
   flow([
     { launchApp: { clearState: true, clearKeychain: true } },
     open("/sign-up"),
-    ...input("Email address", email),
+    ...input("Email address", "invalid-email"),
     ...input("Password", password),
     tap("I am at least 18 years old."),
     // React Native exposes iOS checkbox state as its accessibility value.
     { assertVisible: { id: "field-adult-yes", text: "checkbox, checked" } },
     tap("Create account"),
+    { assertVisible: "Enter a valid email address." },
+    { assertVisible: { id: "field-email", text: "invalid-email" } },
+    { assertVisible: { id: "field-adult-yes", text: "checkbox, checked" } },
+    ...input("Email address", email),
+    tap("Create account"),
     { assertVisible: "Check your email.*" },
+    { assertVisible: "^sign in$" },
+    { assertVisible: "^reset your password$" },
+    { assertNotVisible: { id: "field-email", text: escape(email) } },
+    { assertNotVisible: { id: "field-adult-yes", text: "checkbox, checked" } },
+    ...input("Email address", email),
+    tap("I am at least 18 years old."),
+    tap("Create account"),
+    { assertVisible: "Complete Password." },
   ]);
   const link = new URL(await mailLink());
   const beforeLink = await observer.auth.signInWithPassword({
@@ -139,7 +152,20 @@ export async function nativeJourneys({ device, run, directory }) {
     "Opening an email link must not confirm it automatically.",
   );
   flow([
+    "stopApp",
+    open(link.pathname + link.search),
+    { assertVisible: "Confirm your email" },
     tap("Confirm email"),
+    { assertVisible: "Email confirmed. Sign in to continue." },
+    open(link.pathname + link.search),
+    tap("Confirm email"),
+    { assertVisible: "This link could not be used" },
+    tap("Resend confirmation email"),
+    { assertVisible: "Email address" },
+    tap("Back to sign in"),
+    ...input("Email address", email),
+    ...input("Password", password),
+    { tapOn: { text: "^Sign in$" } },
     { assertVisible: "Welcome to Pool" },
     ...input("Family name", "Native family"),
     ...input("Your display name", "Native guardian"),

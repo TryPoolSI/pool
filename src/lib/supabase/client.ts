@@ -8,6 +8,7 @@ import { publicConfig } from "./config";
 import { storage } from "./storage";
 import type { Database } from "./database.types";
 let client: SupabaseClient<Database> | undefined;
+let emailActionClient: SupabaseClient<Database> | undefined;
 export function createClient() {
   if (!client) {
     const { url, key } = publicConfig();
@@ -24,4 +25,23 @@ export function createClient() {
     });
   }
   return client;
+}
+
+export function createEmailActionClient() {
+  if (!emailActionClient) {
+    const { url, key } = publicConfig();
+    // OTP verification can return a session. Keep it separate from Pool's
+    // signed-in account, including sessions in other tabs.
+    emailActionClient = supabaseClient<Database>(url, key, {
+      auth: {
+        storageKey: "pool-email-action",
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+        skipAutoInitialize: true,
+        flowType: "implicit",
+      },
+    });
+  }
+  return emailActionClient;
 }

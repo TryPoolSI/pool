@@ -1,12 +1,22 @@
+import { isAuthRetryableFetchError, type AuthError } from "@supabase/supabase-js";
 import { Fields } from "./fields";
+import { invitationParts, pendingInvitation } from "./invitation-link";
 import { beginSessionEnd } from "./session-end";
 
 import { redirect } from "@/lib/navigation";
-import { createClient } from "@/lib/supabase/client";
-import { verifiedUser } from "@/lib/auth/identity";
+import { createClient, createEmailActionClient } from "@/lib/supabase/client";
+import { isConfirmedEmailUser, verifiedUser } from "@/lib/auth/identity";
 import { appReturnPath, emailLinkType, validTokenHash } from "@/lib/auth/paths";
 
 export type AuthState = { error?: string; message?: string };
+export const signupConfirmationCopy = [
+  "Check your email for a confirmation link. If you already have an account, ",
+  "sign in",
+  " or ",
+  "reset your password",
+  ".",
+] as const;
+
 const field = (data: Fields, name: string) => String(data.get(name) ?? "");
 const emailAddress = (data: Fields) =>
   field(data, "email").trim().toLowerCase();
@@ -14,6 +24,10 @@ const validEmail = (email: string) =>
   email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 const validPassword = (password: string) =>
   password.length >= 12 && password.length <= 128;
+const rateLimited = (error: AuthError) =>
+  error.status === 429 ||
+  error.code === "over_email_send_rate_limit" ||
+  error.code === "over_request_rate_limit";
 
 export async function signIn(_: AuthState, data: Fields): Promise<AuthState> {
   const email = emailAddress(data);
@@ -29,7 +43,12 @@ export async function signIn(_: AuthState, data: Fields): Promise<AuthState> {
     };
   if (!(await verifiedUser(client)))
     return { error: "Confirm your email before signing in." };
-  redirect(appReturnPath(data.get("next")));
+  const next = data.get("next");
+  if (next === null) {
+    const invitation = await pendingInvitation().catch(() => "");
+    if (invitationParts(invitation)) redirect("/app/invitations");
+  }
+  redirect(appReturnPath(next));
 }
 
 export async function signUp(_: AuthState, data: Fields): Promise<AuthState> {
@@ -46,14 +65,40 @@ export async function signUp(_: AuthState, data: Fields): Promise<AuthState> {
   // Mail templates use Supabase's configured Site URL, never a caller's Host,
   // Origin, forwarded header or user-provided absolute redirect URL.
   const { error } = await client.auth.signUp({ email, password });
-  if (error)
+  if (error && rateLimited(error))
+    return {
+      error:
+        "Wait a few minutes before trying again or requesting another confirmation email.",
+    };
+  if (
+    error &&
+    error.code !== "user_already_exists" &&
+    error.code !== "email_exists"
+  )
     return {
       error:
         "Unable to create your account right now. Try again shortly, or sign in if you already have an account.",
     };
+  return { message: signupConfirmationCopy.join("") };
+}
+
+export async function resendConfirmation(
+  _: AuthState,
+  data: Fields,
+): Promise<AuthState> {
+  const email = emailAddress(data);
+  if (!validEmail(email)) return { error: "Enter a valid email address." };
+  const { error } = await createEmailActionClient().auth.resend({
+    type: "signup",
+    email,
+  });
+  if (isAuthRetryableFetchError(error) && error.status === 0)
+    return { error: "Check your connection and try again." };
+  // Provider outcomes such as a per-address limit or delivery failure can
+  // disclose whether an address has a pending confirmation.
   return {
     message:
-      "Check your email for a confirmation link. If you already have an account, sign in or reset your password.",
+      "If this address still needs confirmation, check your inbox and spam folder for the latest link. If it doesn’t arrive, wait a few minutes before trying again.",
   };
 }
 
@@ -115,9 +160,24 @@ export async function signOut(): Promise<AuthState> {
   redirect("/sign-in?message=signed-out");
 }
 
-export async function confirmEmail(data: Fields) {
+export async function confirmEmail(data: Fields): Promise<AuthState> {
   const tokenHash = data.get("token_hash");
   const type = emailLinkType(data.get("type"));
+  if (type === "signup") {
+    if (!validTokenHash(tokenHash)) redirect("/auth/error?type=signup");
+    const { data, error } = await createEmailActionClient().auth.verifyOtp({
+      token_hash: tokenHash,
+      type,
+    });
+    if (error && (rateLimited(error) || isAuthRetryableFetchError(error)))
+      return {
+        error:
+          "Unable to confirm your email right now. Wait a moment and try again.",
+      };
+    if (error || !isConfirmedEmailUser(data.user))
+      redirect("/auth/error?type=signup");
+    redirect("/sign-in?message=email-confirmed");
+  }
   if (!validTokenHash(tokenHash) || !type) redirect("/auth/error");
   const client = await createClient();
   const { error } = await client.auth.verifyOtp({
@@ -125,9 +185,7 @@ export async function confirmEmail(data: Fields) {
     type,
   });
   if (error || !(await verifiedUser(client))) redirect("/auth/error");
-  redirect(
-    type === "recovery" ? "/reset-password" : appReturnPath(data.get("next")),
-  );
+  redirect("/reset-password");
 }
 
 export async function exchangeAuthCode(input: {

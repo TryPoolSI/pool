@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from "react";
+import { Fragment, useRef, useState, type ReactNode } from "react";
 import { router } from "expo-router";
 import * as Clipboard from "expo-clipboard";
 import Constants from "expo-constants";
@@ -26,6 +26,8 @@ export function CommandForm({
   resultLabel = "Open saved result",
   onResult,
   focusTarget,
+  resetOnSuccess = false,
+  renderMessage,
 }: {
   action: (fields: CommandInput) => Promise<MembershipState | void>;
   fields?: CommandInput;
@@ -35,11 +37,14 @@ export function CommandForm({
   resultLabel?: string;
   focusTarget?: string;
   onResult?: (result: MembershipState) => void;
+  resetOnSuccess?: boolean;
+  renderMessage?: (message: string) => ReactNode;
 }) {
   const [state, setState] = useState<MembershipState>({}),
     [pending, setPending] = useState(false),
     [copied, setCopied] = useState(false);
   const busy = useRef(false);
+  const [fieldVersion, setFieldVersion] = useState(0);
   const [requestFields] = useState(() =>
     Object.fromEntries(
       Object.entries(fields).filter(([name]) =>
@@ -61,6 +66,8 @@ export function CommandForm({
       const result = await action({ ...fields, ...requestFields, ...values });
       if (result) {
         setState(result);
+        if (resetOnSuccess && !result.error)
+          setFieldVersion((version) => version + 1);
         onResult?.(result);
       }
     } catch (error) {
@@ -89,7 +96,11 @@ export function CommandForm({
       disabled={pending || Boolean(creates && state.path)}
     >
       <Fieldset>
-        {children}
+        {resetOnSuccess ? (
+          <Fragment key={fieldVersion}>{children}</Fragment>
+        ) : (
+          children
+        )}
         <Button type="submit">{pending ? "Saving…" : label}</Button>
       </Fieldset>
       <OutcomeFocus state={state} focusTarget={focusTarget}>
@@ -98,7 +109,9 @@ export function CommandForm({
           <Paragraph role="alert">{state.error}</Paragraph>
         )}
         {!pending && state.message && (
-          <Paragraph role="status">{state.message}</Paragraph>
+          <Paragraph role="status">
+            {renderMessage ? renderMessage(state.message) : state.message}
+          </Paragraph>
         )}
         {!pending && state.path && <Link href={state.path}>{resultLabel}</Link>}
         {link && (

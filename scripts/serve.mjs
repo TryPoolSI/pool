@@ -66,7 +66,7 @@ export function appServer({ directory = "dist" } = {}) {
     } catch {
       const route =
         pathname === "/" ||
-        /^\/(?:app(?:\/|$)|sign-in$|sign-up$|forgot-password$|reset-password$|auth\/(?:confirm|callback|error)$)/.test(
+        /^\/(?:app(?:\/|$)|sign-in$|sign-up$|resend-confirmation$|forgot-password$|reset-password$|auth\/(?:confirm|callback|error)$)/.test(
           pathname,
         );
       if (!route || extname(pathname)) {
