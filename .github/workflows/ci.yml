@@ -82,24 +82,59 @@ jobs:
           node-version-file: .nvmrc
       - run: npm ci
       - run: npm run test:components
-      - run: npm run build:ios
       - name: Install native UI test runner
         run: brew install mobile-dev-inc/tap/maestro
       - name: Record native toolchain
         id: native-toolchain
-        run: echo "xcode=$(xcodebuild -version | tr -cs 'A-Za-z0-9' '-')" >> "$GITHUB_OUTPUT"
+        shell: bash
+        env:
+          POOL_IOS_DERIVED_DATA: ${{ runner.temp }}/pool-ios-derived-data
+        run: |
+          xcode=$(xcodebuild -version)
+          sdk_build=$(xcrun --sdk iphonesimulator --show-sdk-build-version)
+          sdk_path=$(xcrun --sdk iphonesimulator --show-sdk-path)
+          pods=$(pod --version)
+          node=$(node -p 'process.version + " " + process.execPath')
+          printf '%s\n' "$xcode" "Simulator SDK: $sdk_build $sdk_path" "CocoaPods: $pods" "Node: $node"
+          # CocoaPods and Xcode can write absolute paths into generated files.
+          fingerprint=$(printf '%s\n' "$xcode" "$sdk_build" "$sdk_path" "$pods" "$node" \
+            "$GITHUB_WORKSPACE" "$POOL_IOS_DERIVED_DATA" | shasum -a 256)
+          echo "fingerprint=${fingerprint%% *}" >> "$GITHUB_OUTPUT"
+      - name: Configure the Xcode compilation cache
+        run: |
+          cat > "$RUNNER_TEMP/pool-ios-compilation-cache.xcconfig" <<EOF
+          COMPILATION_CACHE_ENABLE_CACHING = YES
+          COMPILATION_CACHE_ENABLE_DIAGNOSTIC_REMARKS = YES
+          COMPILATION_CACHE_CAS_PATH = $RUNNER_TEMP/pool-ios-compilation-cache
+          EOF
+          echo "XCODE_XCCONFIG_FILE=$RUNNER_TEMP/pool-ios-compilation-cache.xcconfig" >> "$GITHUB_ENV"
       - name: Restore native build cache
         id: native-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
+            ios/.xcode.env
+            ios/Pool
+            ios/Pool.xcodeproj
+            ios/Pool.xcworkspace
+            ios/Podfile*
             ios/Pods
+            ios/build
             ~/Library/Caches/CocoaPods
             ${{ runner.temp }}/pool-ios-derived-data
-          key: native-${{ runner.os }}-${{ runner.arch }}-${{ steps.native-toolchain.outputs.xcode }}-${{ hashFiles('package-lock.json', 'app.json', 'app.config.*', 'metro.config.cjs', '.nvmrc') }}
+            ${{ runner.temp }}/pool-ios-compilation-cache
+          key: native-v3-compile-${{ runner.os }}-${{ runner.arch }}-${{ steps.native-toolchain.outputs.fingerprint }}-${{ hashFiles('package.json', 'package-lock.json', 'app.json', 'app.config.*', 'react-native.config.*', 'metro.config.cjs', 'plugins/**', 'patches/**', '.nvmrc') }}
       - name: Build and launch ad-hoc signed simulator application
-        run: node scripts/ios-test.mjs --smoke
+        id: native-smoke
+        shell: bash
+        run: |
+          args=(--smoke)
+          if [[ "$NATIVE_CACHE_HIT" == true ]]; then
+            args+=(--reuse-project)
+          fi
+          node scripts/ios-test.mjs "${args[@]}"
         env:
+          NATIVE_CACHE_HIT: ${{ steps.native-cache.outputs.cache-hit }}
           POOL_IOS_DERIVED_DATA: ${{ runner.temp }}/pool-ios-derived-data
       - name: Retain native UI diagnostics
         if: ${{ always() }}
@@ -114,13 +149,20 @@ jobs:
           retention-days: 5
           if-no-files-found: warn
       - name: Save native build cache
-        if: ${{ always() && steps.native-cache.outputs.cache-hit != 'true' }}
+        if: ${{ steps.native-smoke.outcome == 'success' && steps.native-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
+            ios/.xcode.env
+            ios/Pool
+            ios/Pool.xcodeproj
+            ios/Pool.xcworkspace
+            ios/Podfile*
             ios/Pods
+            ios/build
             ~/Library/Caches/CocoaPods
             ${{ runner.temp }}/pool-ios-derived-data
+            ${{ runner.temp }}/pool-ios-compilation-cache
           key: ${{ steps.native-cache.outputs.cache-primary-key }}
 
   checks:
