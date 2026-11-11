@@ -11,7 +11,9 @@ if (
 
 export default defineConfig({
   testDir: "./tests/auth",
-  workers: 1,
+  // Overlap the real JWT expiry wait with other journeys. Screenshot captures
+  // share filenames and still run in order.
+  workers: process.env.POOL_SCREENSHOTS_DIR ? 1 : 2,
   timeout: 180_000,
   expect: { timeout: 10_000 },
   retries: 0,

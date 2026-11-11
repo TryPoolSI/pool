@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import pg from "pg";
 import { setup } from "./handoff-permissions.mjs";
+import { hoursFrom } from "./auth-test-dates.mjs";
 const ok = async (db,name,args) => { const r=await db.rpc(name,args); assert.ifError(r.error); return r.data; };
 const denied = async (db,name,args,code) => { const r=await db.rpc(name,args); assert.ok(r.error,`${name} must deny`); if(code) assert.equal(r.error.code,code,`${name}: ${r.error.message}`); };
 const state = async(f,r,db=f.a.db)=>(await ok(db,"driver_status",{p_ride_id:r.ride}))[0];
@@ -50,7 +51,7 @@ export async function replacementPermissionTests(status,sql) {
   const r=await confirmed(),original=await state(f,r);
   const args=await nomination(r);
   await denied(out.db,"request_replacement",args,"PT404");await denied(f.anon,"request_replacement",args);
-  for(const change of [{p_deadline:"2099-01-01Z"},{p_deadline:"infinity"},{p_mode:"fake"},{p_original_assignment_revision:99},{p_original_assignment_id:crypto.randomUUID()},{p_driver_id:d.id},{p_vehicle_version:99},{p_vehicle_id:small},{p_mode:"unavailable"}]) await denied(a.db,"request_replacement",{...args,...change});
+  for(const change of [{p_deadline:hoursFrom(Date.parse(args.p_deadline),1)},{p_deadline:"infinity"},{p_mode:"fake"},{p_original_assignment_revision:99},{p_original_assignment_id:crypto.randomUUID()},{p_driver_id:d.id},{p_vehicle_version:99},{p_vehicle_id:small},{p_mode:"unavailable"}]) await denied(a.db,"request_replacement",{...args,...change});
   const competing=await Promise.all([a.db.rpc("request_replacement",args),a.db.rpc("request_replacement",{...args,p_id:crypto.randomUUID()})]);
   assert.equal(competing.filter(x=>!x.error).length,1);assert.equal(competing.find(x=>x.error).error.code,"PT409");
   const p={p_id:competing.find(x=>!x.error).data,p_revision:args.p_revision};
@@ -107,7 +108,7 @@ export async function replacementPermissionTests(status,sql) {
   await denied(g.db,"accept_driver_proposal",accept({p_id:legacyArgs.p_id,p_revision:legacyState.ride_revision}),"PT409");
   // Valid direct writes are denied, including forged history/assignment and proposal mode/deadline.
   for(const db of [a.db,g.db,out.db]) {
-    assert.equal((await db.from("driver_proposals").update({deadline:"2099-01-01Z",mode:"optional_swap"}).eq("id",final.p_id)).error?.code,"42501");
+    assert.equal((await db.from("driver_proposals").update({deadline:hoursFrom(Date.parse(r.start),1),mode:"optional_swap"}).eq("id",final.p_id)).error?.code,"42501");
     assert.equal((await db.from("replacement_events").insert({proposal_id:final.p_id,ride_id:r.ride,actor_id:d.id,actor_name:"Fabricated",kind:"confirmed"})).error?.code,"42501");
     assert.equal((await db.from("replacement_events").delete().eq("ride_id",r.ride)).error?.code,"42501");
     assert.equal((await db.from("driver_assignments").update({released_at:null,release_reason:null}).eq("id",original.current_assignment_id)).error?.code,"42501");
@@ -121,12 +122,12 @@ export async function replacementPermissionTests(status,sql) {
     const x=await confirmed(),q=await ready(x);
     if(failure==='capacity') sql(`update public.vehicles set passenger_seats=1 where id='${car}'`);
     if(failure==='version') sql(`update public.vehicles set version=2 where id='${car}'`);
-    if(failure==='reservation') sql(`insert into public.driver_assignments(proposal_id,ride_id,ride_revision,driver_id,vehicle_id,vehicle_version,starts_at,ends_at) select id,ride_id,ride_revision,driver_id,vehicle_id,vehicle_version,'2028-01-01Z','2029-01-01Z' from public.driver_proposals where id='${final.p_id}' on conflict(proposal_id) do update set starts_at='2028-01-01Z',ends_at='2029-01-01Z'`);
+    if(failure==='reservation') sql(`insert into public.driver_assignments(proposal_id,ride_id,ride_revision,driver_id,vehicle_id,vehicle_version,starts_at,ends_at) select id,ride_id,ride_revision,driver_id,vehicle_id,vehicle_version,'${x.start}','${x.end}' from public.driver_proposals where id='${final.p_id}' on conflict(proposal_id) do update set starts_at=excluded.starts_at,ends_at=excluded.ends_at`);
     if(failure==='event') sql(`create function pool_private.fail_r7_event() returns trigger language plpgsql as $$begin if new.kind='confirmed' then raise exception 'fixture_event_failure'; end if; return new; end$$; create trigger fail_r7_event before insert on public.replacement_events for each row execute function pool_private.fail_r7_event()`);
     await denied(b.db,"consent_for_own_children",consent(q,b.family,[cb]));assert.equal(active(x),d.id);assert.equal((await state(f,x)).consent_count,1);
     if(failure==='capacity') sql(`update public.vehicles set passenger_seats=3 where id='${car}'`);
     if(failure==='version') sql(`update public.vehicles set version=1 where id='${car}'`);
-    if(failure==='reservation') sql(`update public.driver_assignments set starts_at='${(await state(f,r)).starts_at}',ends_at='${(await state(f,r)).ends_at}' where proposal_id='${final.p_id}'`);
+    if(failure==='reservation') sql(`update public.driver_assignments set starts_at='${r.start}',ends_at='${r.end}' where proposal_id='${final.p_id}'`);
     if(failure==='event') sql(`drop trigger fail_r7_event on public.replacement_events; drop function pool_private.fail_r7_event()`);
     await ok(a.db,"cancel_driver_proposal",{...q,p_family_id:a.family});
   }

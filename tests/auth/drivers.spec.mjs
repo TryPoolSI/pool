@@ -1,3 +1,4 @@
+import { upcomingRideFields } from "../../scripts/auth-test-dates.mjs";
 import { replayDenied } from "./rpc.mjs";
 import {
   expandDetails,
@@ -191,14 +192,15 @@ test("M1: independent guardians and proposed-only driver explicitly confirm, con
       d.page.getByRole("heading", { name: "Journey van", exact: true }),
     ).toBeVisible();
     await visit(a.page, "/app/rides/new");
+    const rideTimes = upcomingRideFields();
     for (const [label, value] of [
       ["Pickup summary", "Journey neighborhood"],
       ["Drop-off summary", "Journey activity"],
       ["Exact pickup", "111 Private M1 Pickup"],
       ["Exact drop-off", "222 Private M1 Destination"],
       ["IANA timezone", "UTC"],
-      ["Pickup time", "2027-09-01T14:00"],
-      ["Drop-off time", "2027-09-01T15:00"],
+      ["Pickup time", rideTimes.pickup],
+      ["Drop-off time", rideTimes.dropoff],
     ])
       await a.page.getByLabel(label, { exact: true }).fill(value);
     await a.page.getByLabel("Journey A child", { exact: true }).check();
@@ -325,7 +327,7 @@ test("M1: independent guardians and proposed-only driver explicitly confirm, con
         person.page.getByText("111 Private M1 Pickup", { exact: true }),
       ).toBeVisible();
     }
-    await visit(a.page, "/app/schedule?date=2027-09-01&timezone=UTC");
+    await visit(a.page, `/app/schedule?date=${rideTimes.date}&timezone=UTC`);
     await expect(
       a.page.getByText("Driver confirmed", { exact: true }),
     ).toBeVisible();

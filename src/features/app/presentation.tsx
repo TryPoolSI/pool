@@ -2,13 +2,13 @@ import Svg, { Path } from "react-native-svg";
 import * as UI from "@/ui/elements";
 import Link from "@/ui/link";
 
-export function Brand() {
+export function Brand({ compact = false }: { compact?: boolean }) {
   return (
-    <UI.Box className="brand">
+    <UI.Box className="brand" style={compact ? { gap: 6 } : undefined}>
       <Svg
         aria-hidden={true}
-        width="26"
-        height="29"
+        width={compact ? 19 : 26}
+        height={compact ? 21 : 29}
         viewBox="0 0 26 29"
         fill="none"
       >
@@ -22,8 +22,8 @@ export function Brand() {
       <UI.Strong
         style={{
           fontFamily: "Manrope",
-          fontSize: 37,
-          lineHeight: 42,
+          fontSize: compact ? 27 : 37,
+          lineHeight: compact ? 32 : 42,
           fontWeight: "800",
           letterSpacing: -2,
         }}

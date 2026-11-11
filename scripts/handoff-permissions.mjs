@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createClient } from "@supabase/supabase-js";
+import { hoursFrom, upcomingRideStart } from "./auth-test-dates.mjs";
 const ok = async (db,name,args) => { const r=await db.rpc(name,args); assert.ifError(r.error); return r.data; };
 const denied = async (db,name,args,code) => { const r=await db.rpc(name,args); assert.ok(r.error,`${name} must deny`); if(code) assert.equal(r.error.code,code,`${name}: ${r.error.message}`); };
 export async function setup(status) {
@@ -28,9 +29,12 @@ export async function setup(status) {
   const children=[];
   for (const parent of [a,b]) children.push(await ok(parent.db,"save_own_child",{p_id:crypto.randomUUID(),p_family_id:parent.family,p_display_name:`Child ${parent===a?"A":"B"}`,p_seat_requirement:"booster",p_revision:0}));
   const car=await ok(d.db,"save_vehicle",{p_id:crypto.randomUUID(),p_label:"R6 vehicle",p_passenger_seats:3,p_version:0,p_retire:false});
+  const firstRideStart = upcomingRideStart();
   let interval=0;
   async function confirmed({two=true,consenter=b,driver=d,driverFamily=d.family}={}) {
-    const start=new Date(Date.UTC(2028,0,1,12+interval*2)).toISOString(),end=new Date(Date.UTC(2028,0,1,13+interval++*2)).toISOString();
+    const start = hoursFrom(firstRideStart, interval * 2);
+    const end = hoursFrom(firstRideStart, interval * 2 + 1);
+    interval++;
     const ride=await ok(a.db,"create_ride",{p_id:crypto.randomUUID(),p_family_id:a.family,p_circle_id:circle,p_pickup_summary:"R6 pickup",p_destination_summary:"R6 drop-off",p_pickup:"R6 private start",p_destination:"R6 private end",p_direction:"outbound",p_starts_at:start,p_ends_at:end,p_timezone:"UTC",p_child_ids:[children[0]],p_invited_family_ids:two?[b.family]:[]});
     if(two) await ok(b.db,"respond_to_ride_invitation",{p_ride_id:ride,p_family_id:b.family,p_revision:1,p_accept:true,p_child_ids:[children[1]]});
     let vehicle=car;
@@ -40,7 +44,7 @@ export async function setup(status) {
     await ok(driver.db,"accept_driver_proposal",{...reply,p_available_seats:3,p_restraints:true});
     await ok(a.db,"consent_for_own_children",{...reply,p_family_id:a.family,p_child_ids:[children[0]]});
     if(two) await ok(consenter.db,"consent_for_own_children",{...reply,p_family_id:b.family,p_child_ids:[children[1]]});
-    return {ride,revision,reply,vehicle,driver,two};
+    return {ride,revision,reply,vehicle,driver,two,start,end};
   }
   return {a,b,d,out,g,children,car,circle,confirmed,anon:client()};
 }

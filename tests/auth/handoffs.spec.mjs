@@ -1,3 +1,4 @@
+import { upcomingRideFields } from "../../scripts/auth-test-dates.mjs";
 import { captureRpc, replayRpc } from "./rpc.mjs";
 import {
   visit,
@@ -86,14 +87,15 @@ test("R6: independent driver and guardians persist arrival and confirm each chil
       .click();
     await expect(d.page.getByRole("status")).toContainText("Saved");
     await visit(a.page, "/app/rides/new");
+    const rideTimes = upcomingRideFields();
     for (const [label, value] of [
       ["Pickup summary", "Handoff neighborhood"],
       ["Drop-off summary", "Handoff activity"],
       ["Exact pickup", "111 Handoff pickup"],
       ["Exact drop-off", "222 Handoff destination"],
       ["IANA timezone", "UTC"],
-      ["Pickup time", "2027-09-02T14:00"],
-      ["Drop-off time", "2027-09-02T15:00"],
+      ["Pickup time", rideTimes.pickup],
+      ["Drop-off time", rideTimes.dropoff],
     ])
       await a.page.getByLabel(label, { exact: true }).fill(value);
     await a.page.getByLabel("Handoff child A", { exact: true }).check();
@@ -200,7 +202,22 @@ test("R6: independent driver and guardians persist arrival and confirm each chil
         ),
       )
       .toBe(true);
-    await report(d.page, "Handoff child A", "Report pickup");
+    const roleHelp =
+      "The driver confirms pickup for each child. The child’s designated receiving guardian confirms the handoff after arrival.";
+    const pickup = journey(d.page, "Handoff child A");
+    await expect(d.page.getByText(roleHelp, { exact: true })).toBeVisible();
+    await expect(
+      pickup.getByRole("checkbox", {
+        name: "As the driver, I confirm I picked up Handoff child A. First pickup freezes this ride’s plan and responsibilities.",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await refresh(a.page);
+    await expect(a.page.getByText(roleHelp, { exact: true })).toBeVisible();
+    await expect(
+      a.page.getByRole("button", { name: "Confirm pickup as driver", exact: true }),
+    ).toHaveCount(0);
+    await report(d.page, "Handoff child A", "Confirm pickup as driver");
     await expect(
       journey(d.page, "Handoff child A").getByText("Picked up", {
         exact: true,
@@ -217,7 +234,7 @@ test("R6: independent driver and guardians persist arrival and confirm each chil
         exact: true,
       }),
     ).toBeVisible();
-    await report(d.page, "Handoff child B", "Report pickup");
+    await report(d.page, "Handoff child B", "Confirm pickup as driver");
     await expect(
       journey(d.page, "Handoff child B").getByText("Picked up", {
         exact: true,
@@ -226,7 +243,7 @@ test("R6: independent driver and guardians persist arrival and confirm each chil
     await refresh(a.page);
     await expect(
       a.page.getByRole("button", {
-        name: "Confirm child received",
+        name: "Confirm handoff as guardian",
         exact: true,
       }),
     ).toHaveCount(0);
@@ -247,8 +264,14 @@ test("R6: independent driver and guardians persist arrival and confirm each chil
       d.page.getByText("Awaiting guardian receipt", { exact: true }),
     ).toHaveCount(2);
     await expect(
+      journey(d.page, "Handoff child A").getByText(
+        "Waiting for Receiving guardian A, the receiving guardian, to confirm the handoff.",
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(
       d.page.getByRole("button", {
-        name: "Confirm child received",
+        name: "Confirm handoff as guardian",
         exact: true,
       }),
     ).toHaveCount(0);
@@ -262,7 +285,10 @@ test("R6: independent driver and guardians persist arrival and confirm each chil
     await refresh(b.page);
     // Opening a form, checking it, navigating away and reloading never confirms receipt.
     await journey(a.page, "Handoff child A")
-      .getByLabel("I explicitly confirm that I have received Handoff child A.")
+      .getByLabel(
+        "As the receiving guardian, I confirm I received Handoff child A.",
+        { exact: true },
+      )
       .check();
     await visit(a.page, "/app/attention");
     await visit(a.page, url);
@@ -274,7 +300,7 @@ test("R6: independent driver and guardians persist arrival and confirm each chil
     ).toBeVisible();
     // Replay the real receipt RPC with other adults' bearer sessions.
     const post = await captureRpc(a.page, () =>
-      report(a.page, "Handoff child A", "Confirm child received"),
+      report(a.page, "Handoff child A", "Confirm handoff as guardian"),
     );
     for (const person of [d, b, out])
       await replayRpc(post, person.context, "unavailable");
@@ -287,7 +313,7 @@ test("R6: independent driver and guardians persist arrival and confirm each chil
         ),
       )
       .toBe(true);
-    await report(a.page, "Handoff child A", "Confirm child received");
+    await report(a.page, "Handoff child A", "Confirm handoff as guardian");
     await expect(
       journey(a.page, "Handoff child A").getByText("Handoff completed", {
         exact: true,
@@ -308,11 +334,11 @@ test("R6: independent driver and guardians persist arrival and confirm each chil
     await refresh(b.page);
     await expect(
       journey(b.page, "Handoff child A").getByRole("button", {
-        name: "Confirm child received",
+        name: "Confirm handoff as guardian",
         exact: true,
       }),
     ).toHaveCount(0);
-    await report(b.page, "Handoff child B", "Confirm child received");
+    await report(b.page, "Handoff child B", "Confirm handoff as guardian");
     await expect(
       b.page.getByText("Ride completed — every child’s handoff is confirmed.", {
         exact: true,
@@ -325,7 +351,7 @@ test("R6: independent driver and guardians persist arrival and confirm each chil
       ).toHaveCount(2);
       await expect(
         person.page.getByRole("button", {
-          name: /Report pickup|Report arrival|Confirm child received/,
+          name: /Confirm pickup as driver|Report arrival|Confirm handoff as guardian/,
         }),
       ).toHaveCount(0);
       await expect(
@@ -334,21 +360,22 @@ test("R6: independent driver and guardians persist arrival and confirm each chil
           exact: true,
         }),
       ).toBeVisible();
-      await expect(
-        person.page.getByText("reported by Reporting driver at", {
-          exact: false,
-        }),
-      ).toHaveCount(4);
-      await expect(
-        person.page.getByText("reported by Receiving guardian A at", {
-          exact: false,
-        }),
-      ).toHaveCount(1);
-      await expect(
-        person.page.getByText("reported by Receiving guardian B at", {
-          exact: false,
-        }),
-      ).toHaveCount(1);
+      const activity = person.page
+        .getByTestId("activity-list")
+        .getByRole("listitem");
+      await expect(activity).toHaveCount(6);
+      for (const suffix of ["A", "B"]) {
+        const child = `Handoff child ${suffix}`;
+        for (const entry of [
+          "Reporting driver (driver) confirmed pickup",
+          "Reporting driver (driver) reported arrival",
+          `Receiving guardian ${suffix} (receiving guardian) confirmed handoff`,
+        ]) {
+          await expect(
+            activity.filter({ hasText: `${child}: ${entry} at` }),
+          ).toHaveCount(1);
+        }
+      }
     }
     await visit(out.page, url);
     await expect(
