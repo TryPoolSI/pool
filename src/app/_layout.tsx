@@ -2,12 +2,27 @@ import { useEffect } from "react";
 import { useAppFonts } from "@/ui/app-fonts";
 import { RootNavigation } from "@/ui/root-navigation";
 import * as Linking from "expo-linking";
-import { SafeAreaProvider } from "react-native-safe-area-context";
-import { Text, View } from "react-native";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import { StyleSheet, Text } from "react-native";
 import { SessionProvider } from "@/services/session";
 import { rememberInvitation } from "@/services/invitation-link";
 import { consumeFragment, listenFragments } from "@/ui/platform";
-import { styles } from "@/ui/styles";
+import { colors, styles } from "@/ui/styles";
+import appConfig from "../../app.json";
+
+const versionStyles = StyleSheet.create({
+  footer: {
+    backgroundColor: colors.canvas,
+    borderTopWidth: 1,
+    borderColor: colors.line,
+    paddingVertical: 4,
+  },
+  label: {
+    color: colors.muted,
+    textAlign: "center",
+  },
+});
+
 export default function RootLayout() {
   const [loaded, error] = useAppFonts();
   useEffect(() => {
@@ -34,20 +49,27 @@ export default function RootLayout() {
       stop();
     };
   }, []);
-  if (error)
-    return (
-      <View>
-        <Text style={styles.text}>
-          Pool fonts could not be loaded. Reopen the application.
-        </Text>
-      </View>
-    );
-  if (!loaded) return null;
+  if (!loaded && !error) return null;
   return (
     <SafeAreaProvider>
-      <SessionProvider>
-        <RootNavigation />
-      </SessionProvider>
+      {error ? (
+        <SafeAreaView edges={["top"]} style={{ flex: 1 }}>
+          <Text>Pool fonts could not be loaded. Reopen the application.</Text>
+        </SafeAreaView>
+      ) : (
+        <SessionProvider>
+          <RootNavigation />
+        </SessionProvider>
+      )}
+      <SafeAreaView
+        edges={["bottom"]}
+        role="contentinfo"
+        style={versionStyles.footer}
+      >
+        <Text style={[styles.text, styles.small, versionStyles.label]}>
+          Pool v{appConfig.expo.version}
+        </Text>
+      </SafeAreaView>
     </SafeAreaProvider>
   );
 }
