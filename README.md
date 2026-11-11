@@ -132,11 +132,10 @@ URLs and `/api/health`. Health returns `{"status":"ok"}` without contacting
 Supabase; it reports app liveness rather than backend readiness. Private data is
 loaded under the authenticated user and never embedded in exported HTML.
 
-GitHub Actions remains the sole delivery owner. `CI / checks` requires the Linux
-web/database checks and macOS native build/smoke checks. Existing protected-main,
-trusted-source, isolated-backend, migration ordering and approval gates remain in
-force. No migration, deployment, merge or store publication is implied by local
-validation. See [deployment](docs/deployment.md).
+Vercel deploys Pool's web container on pushes to `main` once the Vercel project
+is connected to GitHub. GitHub Actions runs the Linux web/database and macOS
+native checks. Apply any required Supabase migrations before merging a change
+that depends on them. See [deployment](docs/deployment.md) for project setup.
 
 Backend behavior is documented in [membership](docs/membership.md),
 [ride planning](docs/ride-planning.md), [driver confirmation](docs/driver-confirmation.md),

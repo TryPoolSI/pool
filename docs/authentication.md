@@ -63,9 +63,9 @@ production app identity and universal-link associations remain separate work.
 
 Load checked-in template/config changes through normal Supabase stop/start,
 preserving existing volumes. Never reset the existing backend for Auth tests.
-Hosted SMTP, canonical origins, redirect allowlists, test/production project
-isolation and protected deployment setup still require the documented owner
-configuration. Use the hosted verification steps below for real mail delivery.
+Configure hosted SMTP, the production site URL and the redirect allowlist on
+the hosted Supabase project. Use the hosted verification steps below for real
+mail delivery.
 
 `npm run test:auth` owns a separate backend on 55320–55329, builds the actual Expo
 web export and creates real adults through the UI. It verifies captured mail,
@@ -81,19 +81,19 @@ before replacement. Baseline inventory and migration evidence are in
 
 ## Hosted Auth verification
 
-Use the [delivery workflow](deployment.md) for app releases. The Supabase project
+See [deployment setup](deployment.md) for app releases. The Supabase project
 owner manages hosted Auth settings and email templates separately. For a protected
 test deployment, give each browser profile its own authorized preview access.
 
 ### Identify the app and Auth project
 
-1. For test and production, record the web origin, Vercel project and deployment
-   ID, deployed revision (`releaseSha` or provider source metadata), and expected
-   Supabase project ref. Compare that ref with the hostname of the deployed app's
-   Auth requests. Verify the publishable key is accepted by
-   `/auth/v1/settings` on that project. Verify distinct project refs for test and
-   production. If a hosted iOS build is in use, record its build ID and confirm
-   where its Auth requests go too.
+1. Record the production web origin, Vercel project and deployment ID, deployed
+   revision (`releaseSha` or provider source metadata), and expected Supabase
+   project ref. Compare that ref with the hostname of the deployed app's Auth
+   requests. Verify the publishable key is accepted by `/auth/v1/settings` on
+   that project. If you also operate a hosted test app, repeat the checks there
+   and verify it uses a separate Supabase project. If a hosted iOS build is in
+   use, record its build ID and confirm where its Auth requests go too.
 2. In each project's Auth settings, snapshot email signup and confirmation,
    Site URL, redirect allowlist, email template subjects and bodies, and the
    configured recovery expiry. Compare Site URL with the approved HTTPS app

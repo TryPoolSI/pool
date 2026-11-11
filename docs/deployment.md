@@ -4,15 +4,41 @@
 > container serves `dist/` through `scripts/serve.mjs`, including compression,
 > direct-route fallback and unchanged uncached health JSON. `CI / checks` is an
 > aggregate of `web` (Linux/database/browser/container checks) and `ios` (macOS
-> simulator build/component/smoke checks). The delivery guard requires all three
-> exact jobs to succeed. Existing trust, migration and protected-main gates below
-> remain authoritative. Earlier Next.js-specific validation records describe the
-> pre-migration baseline, not the current runtime.
+> simulator build/component/smoke checks).
 
-## Delivery contract
+## Vercel Git deployments
 
-GitHub Actions is the sole delivery owner. `CI / checks` validates the exact PR
-head or merged `main` SHA with Node from `.nvmrc`: `npm ci`, `npm run check`,
+Connect `UWorldJK/pool` in the Vercel project's **Settings → Git**. In
+**Settings → Environments → Production**, set **Branch Tracking** to `main`.
+Use the repository root. The Container preset builds `Dockerfile.vercel` and
+serves the Expo web export.
+[Vercel Git setup](https://vercel.com/docs/git)
+
+Set these variables for **Production** in the Vercel project before deploying.
+
+| Variable | Value |
+| --- | --- |
+| `EXPO_PUBLIC_SUPABASE_URL` | URL of the hosted Supabase project used by Pool |
+| `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Publishable key for that project |
+| `PORT` | `3000` |
+
+Vercel builds and deploys each push to `main`, including PR merges. Other
+branches have automatic deployments disabled. To deploy the current revision
+after connecting the project, use **Deployments → Create Deployment** and select
+`main`. Check the source commit and the version footer on the production URL.
+[Vercel deployment from a Git reference](https://vercel.com/docs/git#creating-a-deployment-from-a-git-reference)
+
+GitHub Actions continues to run `CI / checks`. Vercel Git deployments run
+independently of those checks. Keep `DELIVERY_ENABLED` unset while using Vercel
+Git deployments. If a release needs new Supabase migrations, apply the reviewed
+migrations to the hosted project before merging the app change that uses them.
+[Supabase database migrations](https://supabase.com/docs/guides/deployment/database-migrations)
+
+## Optional GitHub Actions delivery
+
+The instructions below apply when switching release ownership to GitHub Actions.
+`CI / checks` validates the exact PR head or merged `main` SHA with Node from
+`.nvmrc`. It runs `npm ci`, `npm run check`,
 Compose validation with a disposable placeholder environment, and the final
 `linux/amd64` container smoke. Forks receive these checks without release secrets.
 The smoke needs no database and checks homepage content, all linked CSS,
@@ -33,12 +59,10 @@ definitions and invoke generated preview/production arguments with `--help`.
 Version 65.4.0 uses `--environment`; `--target` is its deprecated alias.
 
 The [Vercel container path](https://vercel.com/docs/functions/runtimes/container)
-stays `Dockerfile.vercel`, the Container preset and Vercel's own registry. There is
-no extra registry. `vercel.json` disables automatic
-Git deployments with
-[`git.deploymentEnabled: false`](https://vercel.com/docs/project-configuration/git-configuration).
-The provider Git integration must also be disconnected, including deploy hooks
-and other automation that could race Actions.
+uses `Dockerfile.vercel`, the Container preset and Vercel's registry. For
+Actions-owned releases, set `git.deploymentEnabled` to `false` in `vercel.json`,
+disconnect the Vercel Git integration, and remove competing deploy hooks.
+[Vercel Git configuration](https://vercel.com/docs/project-configuration/git-configuration)
 
 ## Required owner setup (pending)
 
