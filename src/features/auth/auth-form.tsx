@@ -3,20 +3,39 @@ import { CommandForm, Fields } from "@/ui/command-form";
 import {
   signIn,
   signUp,
+  signupConfirmationCopy,
+  resendConfirmation,
   requestRecovery,
   resetPassword,
   signOut,
 } from "@/services/auth";
+import Link from "@/ui/link";
+
+function signupMessage() {
+  const [intro, signInLabel, conjunction, resetLabel, punctuation] =
+    signupConfirmationCopy;
+  return (
+    <>
+      {intro}
+      <Link href="/sign-in">{signInLabel}</Link>
+      {conjunction}
+      <Link href="/forgot-password">{resetLabel}</Link>
+      {punctuation}
+    </>
+  );
+}
+
 export function AuthForm({
   mode,
-  next = "/app",
+  next,
 }: {
-  mode: "sign-in" | "sign-up" | "recovery" | "reset" | "sign-out";
+  mode: "sign-in" | "sign-up" | "resend" | "recovery" | "reset" | "sign-out";
   next?: string;
 }) {
   const actions = {
     "sign-in": signIn,
     "sign-up": signUp,
+    resend: resendConfirmation,
     recovery: requestRecovery,
     reset: resetPassword,
     "sign-out": signOut,
@@ -24,6 +43,7 @@ export function AuthForm({
   const labels = {
     "sign-in": "Sign in",
     "sign-up": "Create account",
+    resend: "Resend confirmation email",
     recovery: "Send reset link",
     reset: "Save new password",
     "sign-out": "Sign out",
@@ -33,6 +53,8 @@ export function AuthForm({
       action={(values) => actions[mode]({}, new Fields(values))}
       fields={{ next }}
       label={labels[mode]}
+      resetOnSuccess={mode === "sign-up"}
+      renderMessage={mode === "sign-up" ? signupMessage : undefined}
     >
       {mode !== "reset" && mode !== "sign-out" && (
         <UI.Label>

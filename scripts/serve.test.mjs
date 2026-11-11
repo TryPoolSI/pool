@@ -21,6 +21,7 @@ test("web shell supports direct app routes without leaking data or masking missi
       "/app",
       "/app/rides/123",
       "/auth/confirm?token_hash=private",
+      "/resend-confirmation",
     ]) {
       const response = await fetch(origin + route);
       assert.equal(response.status, 200);
