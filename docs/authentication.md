@@ -93,7 +93,9 @@ test deployment, give each browser profile its own authorized preview access.
    Site URL, redirect allowlist, email template subjects and bodies, and the
    configured recovery expiry. Compare Site URL with the approved HTTPS app
    origin without a trailing slash and check exact redirect entries for callbacks
-   in use.
+   in use. A verification request with a deliberately invalid recovery token
+   and no redirect override can confirm the effective fallback origin without
+   sending email or using a real account.
    The checked-in templates append `/auth/confirm` to `.SiteURL` and pass
    `.TokenHash` with `type=signup` or `type=recovery`. The checked-in HTML and
    subjects are in [auth/email](../auth/email). The app makes signup and
@@ -108,9 +110,12 @@ test deployment, give each browser profile its own authorized preview access.
    suppressions, and link tracking. Record the project email quota,
    signup/recovery cooldowns, endpoint limits, and provider quotas.
    Supabase's built-in SMTP limits delivery to project team addresses. External
-   mailboxes require a configured sender that can reach them.
+   mailboxes require a configured sender that can reach them. Free projects
+   created on or after June 3, 2026 also need custom SMTP to edit Auth email
+   templates when using Supabase's email delivery path.
    [Supabase SMTP](https://supabase.com/docs/guides/auth/auth-smtp),
-   [Auth rate limits](https://supabase.com/docs/guides/auth/rate-limits)
+   [Auth rate limits](https://supabase.com/docs/guides/auth/rate-limits),
+   [template customization change](https://supabase.com/changelog/46599-changes-to-email-template-customisation-on-free-tier)
 
 ### Trace one signup and one recovery request
 
@@ -132,6 +137,8 @@ test deployment, give each browser profile its own authorized preview access.
    usable until **Choose a new password** is pressed. If it fails, check for a
    default Supabase verification URL, a callback code tied to browser A, the
    wrong origin, link rewriting or prefetch, and direct-route serving.
+   A dashboard-triggered send can use a different link type. Use a reset
+   requested from Pool for acceptance.
 3. Press **Choose a new password**. Correlate OTP verification and the verified
    user ID with the intended account. Save the password and check that Pool
    signs out and shows the password-updated message on sign-in. Verify the old
