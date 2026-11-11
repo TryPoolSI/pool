@@ -464,10 +464,28 @@ test("workflow wiring keeps untrusted checks secretless and uses one non-cancell
     assert.ok(ci.jobs.web.steps.some((step) => step.run === command));
   }
   assert.deepEqual(ci.jobs.checks.needs, ["web", "ios"]);
-  assert.ok(
-    ci.jobs.ios.steps.some(
-      (step) => step.run === "node scripts/ios-test.mjs --smoke",
-    ),
+  const iosSteps = ci.jobs.ios.steps;
+  assert.ok(!iosSteps.some((step) => step.run === "npm run build:ios"));
+  const smoke = iosSteps.find((step) => step.id === "native-smoke");
+  assert.match(smoke.run, /args=\(--smoke\)/);
+  assert.match(
+    smoke.run,
+    /if \[\[ "\$NATIVE_CACHE_HIT" == true \]\]; then\s+args\+=\(--reuse-project\)/,
+  );
+  assert.ok(smoke.run.includes('node scripts/ios-test.mjs "${args[@]}"'));
+  assert.equal(
+    smoke.env.NATIVE_CACHE_HIT,
+    "${{ steps.native-cache.outputs.cache-hit }}",
+  );
+  const restore = iosSteps.find((step) => step.id === "native-cache");
+  const save = iosSteps.find((step) => step.uses?.startsWith("actions/cache/save"));
+  assert.equal(restore.with["restore-keys"], undefined);
+  assert.equal(save.with.path, restore.with.path);
+  assert.ok(restore.with.path.includes("/pool-ios-compilation-cache"));
+  assert.ok(!restore.with.path.includes(".xcode.env.local"));
+  assert.equal(
+    save.if,
+    "${{ steps.native-smoke.outcome == 'success' && steps.native-cache.outputs.cache-hit != 'true' }}",
   );
   assert.deepEqual(delivery.on, {
     workflow_run: { workflows: ["CI"], types: ["completed"] },
