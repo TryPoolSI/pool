@@ -10,15 +10,31 @@ import {
 } from "./presentation";
 import { createClient } from "@/lib/supabase/client";
 import { MembershipForm, NameField } from "./membership-form";
+import { HomeDriverCoverage } from "./home-driver-coverage";
+
+async function loadCircles(client: ReturnType<typeof createClient>) {
+  const pageSize = 1000;
+  const circles: { id: string; name: string }[] = [];
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await client
+      .from("circles")
+      .select("id,name")
+      .order("name")
+      .order("id")
+      .range(offset, offset + pageSize - 1);
+    if (error) throw new Error("Membership could not be loaded");
+    circles.push(...data);
+    if (data.length < pageSize) return circles;
+  }
+}
 
 async function loadApplication() {
-  const client = await createClient();
+  const client = createClient();
   const [families, circles] = await Promise.all([
     client.from("families").select("id,name").order("name"),
-    client.from("circles").select("id,name").order("name"),
+    loadCircles(client),
   ]);
-  if (families.error || circles.error)
-    throw new Error("Membership could not be loaded");
+  if (families.error) throw new Error("Membership could not be loaded");
   return { model: { families, circles } };
 }
 
@@ -26,9 +42,7 @@ const Application = createScreen(loadApplication, ({ families, circles }) => (
   <>
     <PageHeading
       eyebrow="SHARE THE DRIVING"
-      title={
-        families.data.length ? "Your family, your circle." : "Welcome to Pool"
-      }
+      title={families.data.length ? "Home" : "Welcome to Pool"}
       action={
         <Link className="button secondary" href="/app/attention">
           Today’s rides →
@@ -67,9 +81,9 @@ const Application = createScreen(loadApplication, ({ families, circles }) => (
       </UI.Section>
       <UI.Section className="panel">
         <UI.Heading2>Your circles</UI.Heading2>
-        {circles.data.length ? (
+        {circles.length ? (
           <UI.List className="link-list">
-            {circles.data.map((circle) => (
+            {circles.map((circle) => (
               <UI.ListItem key={circle.id}>
                 <Link href={`/app/circles/${circle.id}`}>
                   <UI.Inline className="team-icon">
@@ -91,6 +105,7 @@ const Application = createScreen(loadApplication, ({ families, circles }) => (
         </Link>
       </UI.Section>
     </UI.Box>
+    {circles.length > 0 && <HomeDriverCoverage circles={circles} />}
     {Boolean(families.data.length) && (
       <UI.Box className="setup-cards">
         <Link href="/app/children">

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import pg from "pg";
+import { hoursFrom, upcomingRideStart } from "./auth-test-dates.mjs";
 import { createClient } from "@supabase/supabase-js";
 function fixtures(status) {
   assert.equal(status.API_URL,"http://127.0.0.1:55321");
@@ -18,7 +19,7 @@ async function ok(db,name,args) { const r=await db.rpc(name,args); assert.ifErro
 async function denied(db,name,args,code) { const r=await db.rpc(name,args); assert.ok(r.error,`${name} must deny`); if(code) assert.equal(r.error.code,code,`${name}: ${r.error.message}`); }
 const childArgs=(family,name)=>({p_id:crypto.randomUUID(),p_family_id:family,p_display_name:name,p_seat_requirement:"booster",p_revision:0});
 const vehicleArgs=(seats=4)=>({p_id:crypto.randomUUID(),p_label:"Registered car",p_passenger_seats:seats,p_version:0,p_retire:false});
-const rideArgs=(family,circle,children,invited=[])=>({p_id:crypto.randomUUID(),p_family_id:family,p_circle_id:circle,p_pickup_summary:"Neighborhood",p_destination_summary:"Activity",p_pickup:"101 Secret Place",p_destination:"202 Private Destination",p_direction:"outbound",p_starts_at:"2027-11-07T07:30Z",p_ends_at:"2027-11-07T09:30Z",p_timezone:"America/Denver",p_child_ids:children,p_invited_family_ids:invited});
+const rideArgs=(family,circle,children,invited=[],start=upcomingRideStart())=>({p_id:crypto.randomUUID(),p_family_id:family,p_circle_id:circle,p_pickup_summary:"Neighborhood",p_destination_summary:"Activity",p_pickup:"101 Secret Place",p_destination:"202 Private Destination",p_direction:"outbound",p_starts_at:hoursFrom(start,0),p_ends_at:hoursFrom(start,2),p_timezone:"America/Denver",p_child_ids:children,p_invited_family_ids:invited});
 export async function driverUpgradeIdentity(status) {
   const person=await fixtures(status).user("r4-upgrade");
   const family=await ok(person.db,"create_family",{p_name:"Persisted R4 family",p_display_name:"Existing guardian"});
@@ -63,8 +64,9 @@ export async function driverPermissionTests(status,sql) {
   for(const seats of [0,-1,51,1.5]) await denied(d.db,"save_vehicle",{...vehicleArgs(),p_passenger_seats:seats});
   await denied(a.db,"save_vehicle",{...carArgs,p_version:1},"PT404");
   await denied(d.db,"save_vehicle",{...carArgs,p_version:2},"PT409");
-  async function make({two=true,start="2027-11-07T07:30Z",end="2027-11-07T09:30Z",respond=true}={}) {
-    const ride=await ok(a.db,"create_ride",{...rideArgs(fa,circle,[ca],two?[fb]:[]),p_starts_at:start,p_ends_at:end});
+  const rideStart = upcomingRideStart();
+  async function make({two=true,start=hoursFrom(rideStart,0),end=hoursFrom(rideStart,2),respond=true}={}) {
+    const ride=await ok(a.db,"create_ride",{...rideArgs(fa,circle,[ca],two?[fb]:[],rideStart),p_starts_at:start,p_ends_at:end});
     if(two&&respond) await ok(b.db,"respond_to_ride_invitation",{p_ride_id:ride,p_family_id:fb,p_revision:1,p_accept:true,p_child_ids:[cb,cb2]});
     return {ride,revision:two&&respond?2:1};
   }
@@ -268,8 +270,8 @@ export async function driverPermissionTests(status,sql) {
   await ok(d.db,"withdraw_driver",lockProposal);
   // Half-open intervals permit adjacent rides using the same vehicle.
   const adjacent=[];
-  for(const [start,end] of [["2027-11-07T10:00Z","2027-11-07T11:00Z"],["2027-11-07T11:00Z","2027-11-07T12:00Z"]]) {
-    const rr=await make({two:false,start,end}),pp=await propose(rr);adjacent.push(pp);
+  for(const offset of [3,4]) {
+    const rr=await make({two:false,start:hoursFrom(rideStart,offset),end:hoursFrom(rideStart,offset+1)}),pp=await propose(rr);adjacent.push(pp);
     await ok(a.db,"consent_for_own_children",{...pp,p_family_id:fa,p_child_ids:[ca]});await ok(d.db,"accept_driver_proposal",{...pp,p_available_seats:4,p_restraints:true});
   }
   for(const pp of adjacent) await ok(d.db,"withdraw_driver",pp);
