@@ -403,7 +403,7 @@ export function ApplicationShell({ children }: { children: ReactNode }) {
             backgroundColor: colors.surface,
             paddingTop: 8,
             paddingHorizontal: 8,
-            paddingBottom: Math.max(10, insets.bottom),
+            paddingBottom: 10,
           }}
         >
           <NavigationLinks mobile />
@@ -428,7 +428,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
           alignItems: "center",
           paddingHorizontal: 16,
           paddingTop: Math.max(24, insets.top),
-          paddingBottom: Math.max(24, insets.bottom),
+          paddingBottom: 24,
         }}
       >
         <View
