@@ -60,6 +60,7 @@ test("two real families and a guardian use manual invitations, explicit acceptan
         name: "Join circle: Morning browser circle",
       }),
     ).toBeVisible();
+    await expect(other.page.getByRole("option", { name: "Create a new family" })).toHaveCount(0);
     await other.page.getByLabel("Your display name").fill("Elm adult");
     await other.page
       .getByLabel("Family to join the circle")
@@ -84,6 +85,11 @@ test("two real families and a guardian use manual invitations, explicit acceptan
     await expect(
       other.page.getByRole("button", { name: "Create circle invitation" }),
     ).toHaveCount(0);
+    await visit(owner.page, circleUrl);
+    const guardianCircleLink = await invitation(owner.page, guardian.email, "circle");
+    await openAndCheck(guardian.page, guardianCircleLink);
+    await expect(guardian.page.getByRole("option", { name: "Create a new family" })).toBeAttached();
+    await expect(guardian.page.getByLabel("Family name", { exact: true })).toBeVisible();
     await visit(other.page, ownerFamilyUrl);
     await expect(
       other.page.getByRole("heading", { name: "Membership unavailable" }),
@@ -117,6 +123,27 @@ test("two real families and a guardian use manual invitations, explicit acceptan
         .getByText("Oak guardian · guardian", { exact: false })
         .first(),
     ).toBeVisible();
+    await visit(guardian.page, "/app");
+    await expect(guardian.page.getByRole("link", { name: /Oak browser family/ })).toBeVisible();
+    await expect(guardian.page.getByRole("button", { name: /^Create (a )?family$/ })).toHaveCount(0);
+
+    await visit(other.page, otherFamilyUrl);
+    const conflictingLink = await invitation(other.page, guardian.email, "guardian");
+    await openAndCheck(guardian.page, conflictingLink);
+    await guardian.page.getByLabel("Your display name").fill("Oak guardian");
+    await guardian.page.getByRole("checkbox").check();
+    await guardian.page.getByRole("button", { name: "Accept invitation", exact: true }).click();
+    const conflict = guardian.page.getByRole("alert");
+    await expect(conflict).toContainText("This invitation is still unused");
+    await expect(conflict).toContainText("The last owner and any circle coordinator must stay");
+    await refresh(guardian.page);
+    await expect(guardian.page.getByLabel("Invitation link")).toHaveValue(conflictingLink);
+    await guardian.page.getByRole("button", { name: "Check invitation" }).click();
+    await expect(guardian.page.getByRole("heading", { name: "Join family: Elm browser family" })).toBeVisible();
+
+    await openAndCheck(guardian.page, guardianCircleLink);
+    await expect(guardian.page.getByRole("status")).toContainText("Ask the circle coordinator");
+    await expect(guardian.page.getByRole("button", { name: "Accept invitation", exact: true })).toHaveCount(0);
     // Reuse fails, and revocation is visible without exposing invitation email lists.
     await openAndCheck(guardian.page, guardianLink);
     await expect(guardian.page.locator('[role="alert"]')).toContainText(

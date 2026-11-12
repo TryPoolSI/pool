@@ -20,7 +20,10 @@ async function executeMembership(
   // checks for callers that bypass these actions. Never log bearer tokens.
   try {
     const command = requiredText(data, "command");
-    let result: { data: unknown; error: { code: string } | null };
+    let result: {
+      data: unknown;
+      error: { code: string; message: string } | null;
+    };
     let path: string | undefined;
     switch (command) {
       case "create-family":
@@ -61,7 +64,7 @@ async function executeMembership(
         const kind = requiredText(data, "kind");
         const token = requiredText(data, "token", 64);
         if (
-          !["guardian", "circle"].includes(kind) ||
+          (kind !== "guardian" && kind !== "circle") ||
           !/^[a-f0-9]{64}$/.test(token)
         )
           throw new Error("validation");
@@ -93,7 +96,10 @@ async function executeMembership(
               : {}),
         });
         if (!result.error) path = `/app/families/${result.data}`;
-        if (result.error) return { error: membershipError(result.error.code) };
+        if (result.error)
+          return {
+            error: membershipError(result.error.code, result.error.message, kind),
+          };
         revalidatePath("/app", "layout");
         return {
           message:
@@ -123,7 +129,8 @@ async function executeMembership(
       default:
         throw new Error("validation");
     }
-    if (result.error) return { error: membershipError(result.error.code) };
+    if (result.error)
+      return { error: membershipError(result.error.code, result.error.message) };
     revalidatePath("/app", "layout");
     return { message: "Saved. Membership is up to date.", path };
   } catch (error) {

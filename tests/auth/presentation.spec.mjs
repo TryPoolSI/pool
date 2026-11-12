@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { AxeBuilder } from "@axe-core/playwright";
-import { account, family, openAction, closeAction } from "./helpers.mjs";
+import { account, family, openAction } from "./helpers.mjs";
 import { captureState } from "./presentation.mjs";
 async function accessible(page) {
   const results = await new AxeBuilder({ page })
@@ -87,6 +87,11 @@ test("R8 shared layouts retain desktop composition, mobile navigation, keyboard 
     await checkHomeLogo(page, phoneNav);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/app");
+    await page.getByLabel("Family name", { exact: true }).fill(" ");
+    await page.getByLabel("Your display name").fill("Presentation guardian");
+    await page.getByRole("button", { name: "Create family", exact: true }).click();
+    await expect(page.getByRole("alert")).toBeVisible();
+    await accessible(page);
     await family(page, "Presentation family", "Presentation guardian");
     await expect(
       phoneNav.getByRole("link", { name: "Home", exact: true }),
@@ -178,15 +183,9 @@ test("R8 shared layouts retain desktop composition, mobile navigation, keyboard 
     await checkHomeLogo(page, sidebar);
     await sidebar.getByRole("link", { name: "Home", exact: true }).click();
     await expect(page).toHaveURL(/\/app$/);
-    const familyDialog = await openAction(page, "Create a family");
-    await familyDialog.getByLabel("Family name", { exact: true }).fill(" ");
-    await familyDialog.getByLabel("Your display name").fill("Presentation guardian");
-    await familyDialog
-      .getByRole("button", { name: "Create family", exact: true })
-      .click();
-    await expect(familyDialog.getByRole("alert")).toBeVisible();
+    await expect(page.getByRole("link", { name: /Presentation family/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Create (a )?family$/ })).toHaveCount(0);
     await accessible(page);
-    await closeAction(page, "Create a family");
     await page.emulateMedia({ colorScheme: "dark" });
     expect(
       await page.evaluate(

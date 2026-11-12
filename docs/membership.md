@@ -5,6 +5,7 @@ owner membership in one transaction. Open a family to see guardians, invite a
 guardian, remove membership, or create a circle. Family owners manage guardians.
 Guardians may leave their own family. The last owner cannot leave or be removed.
 There is no self-promotion, ownership invitation or general membership write API.
+An adult can have at most one active family membership. A family can join multiple circles.
 
 The adult creating a circle must own its initial family. They coordinate family
 membership, with their family joined in the same transaction. Open the circle to
@@ -58,6 +59,41 @@ Commands derive the actor; caller-supplied owner/actor/role/time fields are abse
 Scope root locks precede invitation row locks; receiving family locks come first
 for circle acceptance/removal. Last-owner/coordinator checks share those locks.
 Removal affects subsequent reads and commands on the existing session.
+
+## One-family migration preflight
+
+Before rollout, run this read-only audit in each target database. Use a
+privileged connection so row-level security does not hide memberships.
+
+```sql
+WITH active_memberships AS (
+  SELECT user_id, family_id, role, joined_at,
+         count(*) OVER (PARTITION BY user_id) AS active_count
+  FROM public.family_members
+  WHERE removed_at IS NULL
+)
+SELECT user_id, family_id, role, joined_at, active_count
+FROM active_memberships
+WHERE active_count > 1
+ORDER BY user_id, joined_at, family_id;
+```
+
+For each adult in the results, confirm with the affected families which
+membership to retain. Before removing an extra membership, check that the family
+has another active owner if needed, that the adult is not its required circle
+coordinator, and that they have no active trip responsibility that blocks removal.
+Use the existing family member removal command as an authorized actor. It keeps
+the membership row and preserves family IDs, children, rides, circle links, and
+completed history. Review any pending driver coverage or consent that ordinary
+removal will invalidate. Hold rollout on blocked cases until the responsibilities
+are resolved. Any owner or coordinator handoff requires separate review.
+
+Rerun the audit and require zero rows before applying the reviewed migration. Its
+transactional index build also fails if a duplicate appears between the audit and
+application. After applying, confirm the new index is valid and rerun the audit.
+Apply and verify the hosted database migration before merging the app PR when
+using the Vercel Git integration. That deployment path only builds the app.
+See [deployment](deployment.md).
 
 ## Local checks and generated types
 

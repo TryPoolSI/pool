@@ -75,7 +75,6 @@ test("Home shows joined rides without confirmed coverage across circles", async 
       await expect(coverage).toHaveCount(0);
 
       const family = await createFamily(member, "Home family");
-      const secondFamily = await createFamily(member, "Second home family");
       const otherFamily = await createFamily(other, "Other family");
       const north = await createCircle(member, family, "North circle");
       const south = await createCircle(member, family, "South circle");
@@ -84,15 +83,9 @@ test("Home shows joined rides without confirmed coverage across circles", async 
         otherFamily,
         "Private circle",
       );
-      await joinCircle(member, north, member, secondFamily);
       await joinCircle(member, north, other, otherFamily);
       await joinCircle(member, south, other, otherFamily);
       const child = await createChild(member, family, "Home child");
-      const secondChild = await createChild(
-        member,
-        secondFamily,
-        "Second home child",
-      );
       const otherChild = await createChild(other, otherFamily, "Other child");
       const memberDriver = await registerDriver(member, family);
       const otherDriver = await registerDriver(other, otherFamily);
@@ -130,16 +123,16 @@ test("Home shows joined rides without confirmed coverage across circles", async 
         });
       }
 
-      // Create in reverse pickup order and join the later ride through both families.
+      // Create in reverse pickup order and join the later ride with both families.
       const later = await ride(member, family, north, child, "Later pickup", 6, [
-        secondFamily,
+        otherFamily,
       ]);
-      await rpc(member, "respond_to_ride_invitation", {
+      await rpc(other, "respond_to_ride_invitation", {
         p_ride_id: later,
-        p_family_id: secondFamily,
+        p_family_id: otherFamily,
         p_revision: 1,
         p_accept: true,
-        p_child_ids: [secondChild],
+        p_child_ids: [otherChild],
       });
       const early = await ride(member, family, north, child, "Early pickup", 4);
       const pending = await ride(member, family, south, child, "Pending pickup", 8);

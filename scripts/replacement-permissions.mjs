@@ -19,7 +19,7 @@ export async function replacementUpgradeIdentity(status) {
 }
 // Build actual R7 data under the original R7 migration, before the forward fixes.
 export async function replacementCompletedUpgradeIdentity(status) {
-  const f=await setup(status),{a,b,d,g,children:[ca,cb]}=f,r=await f.confirmed();
+  const f=await setup(status),{a,b,d,driverGuardian:g,children:[ca,cb]}=f,r=await f.confirmed();
   const original=await state(f,r),car=await ok(g.db,"save_vehicle",{p_id:crypto.randomUUID(),p_label:"Upgrade candidate",p_passenger_seats:3,p_version:0,p_retire:false});
   const id=await ok(a.db,"request_replacement",{p_id:crypto.randomUUID(),p_ride_id:r.ride,p_family_id:a.family,p_revision:r.revision,p_driver_id:g.id,p_driver_family_id:d.family,p_vehicle_id:car,p_vehicle_version:1,p_mode:"optional_swap",p_original_assignment_id:original.current_assignment_id,p_original_assignment_revision:original.current_assignment_revision,p_deadline:original.starts_at});
   await ok(g.db,"decline_driver_proposal",{p_id:id,p_revision:r.revision});
@@ -36,7 +36,7 @@ export async function replacementCompletedUpgradeIdentity(status) {
   };
 }
 export async function replacementPermissionTests(status,sql) {
-  const f=await setup(status),{a,b,d,g,out,children:[ca,cb],confirmed}=f;
+  const f=await setup(status),{a,b,d,driverGuardian:g,out,children:[ca,cb],confirmed}=f;
   const car=await ok(g.db,"save_vehicle",{p_id:crypto.randomUUID(),p_label:"Replacement van",p_passenger_seats:3,p_version:0,p_retire:false});
   const small=await ok(g.db,"save_vehicle",{p_id:crypto.randomUUID(),p_label:"Small car",p_passenger_seats:1,p_version:0,p_retire:false});
   async function nomination(r,changes={}) {

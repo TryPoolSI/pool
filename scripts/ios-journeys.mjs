@@ -7,6 +7,7 @@ import { upcomingRideFields } from "./auth-test-dates.mjs";
 import {
   account,
   family,
+  invitation,
   openAndCheck,
   visit,
   refresh,
@@ -178,6 +179,8 @@ export async function nativeJourneys({ device, run, directory }) {
     { assertVisible: "A little planning goes a long way." },
     tap("Pool home"),
     { assertVisible: "Your families" },
+    { assertVisible: "Native family" },
+    { assertNotVisible: "^Create (a )?family$" },
   ]);
   const signed = await observer.auth.signInWithPassword({ email, password });
   assert.equal(signed.error, null);
@@ -229,6 +232,17 @@ export async function nativeJourneys({ device, run, directory }) {
   const web = await account(configuredBrowser, "native-counterpart");
   try {
     await family(web.page, "Web family", "Web guardian");
+    const conflictingInvite = new URL(await invitation(web.page, email, "guardian"));
+    flow([
+      open(conflictingInvite.pathname + conflictingInvite.hash),
+      tap("Check invitation"),
+      { assertVisible: "Join family: Web family" },
+      ...input("Your display name", "Native guardian"),
+      tap("I explicitly accept this family guardian membership."),
+      tap("Accept invitation"),
+      { assertVisible: "You already belong to a family.*The last owner and any circle coordinator must stay.*" },
+      { assertNotVisible: "Open saved membership" },
+    ]);
     await visit(web.page, "/app/children");
     await web.page.getByLabel("Child display name").fill("Web child");
     await web.page

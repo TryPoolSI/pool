@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createClient } from "@supabase/supabase-js";
+import { Client } from "pg";
 
 // Called only with the status of the fresh project owned by auth-browser.mjs.
 // Privileged fixture setup never supplies the identity used by assertions.
@@ -19,6 +20,75 @@ function clients(status) {
   }
   return { user, userClient };
 }
+
+async function ok(client, name, args) {
+  const result = await client.rpc(name, args);
+  assert.ifError(result.error);
+  return result.data;
+}
+
+function createFamilyArgs(name) {
+  return { p_name: name, p_display_name: "Fixture adult" };
+}
+
+export async function oneFamilyUpgrade(status, migration) {
+  const url = new URL(status.DB_URL);
+  assert.equal(url.hostname, "127.0.0.1");
+  assert.equal(url.port, "55322");
+  const { user } = clients(status);
+  const [first, second, guardian] = await Promise.all(
+    ["upgrade-first-owner", "upgrade-second-owner", "upgrade-guardian"].map((label) => user(label)),
+  );
+  const firstFamily = await ok(first.client, "create_family", createFamilyArgs("First legacy family"));
+  const secondFamily = await ok(second.client, "create_family", createFamilyArgs("Second legacy family"));
+  for (const [owner, family] of [[first, firstFamily], [second, secondFamily]]) {
+    const [{ token }] = await ok(owner.client, "create_invitation", {
+      p_kind: "guardian", p_scope_id: family, p_email: guardian.email,
+    });
+    await ok(guardian.client, "accept_invitation", {
+      p_kind: "guardian", p_token: token, p_display_name: "Legacy guardian",
+    });
+  }
+
+  const db = new Client({ connectionString: url.href });
+  const membershipRows = async (connection) => (await connection.query(
+    "select family_id, role, joined_at, removed_at from public.family_members where user_id = $1 order by family_id",
+    [guardian.id],
+  )).rows;
+  await db.connect();
+  let reconciled;
+  try {
+    const before = await membershipRows(db);
+    assert.equal(before.length, 2);
+    assert.ok(before.every((row) => row.removed_at === null));
+    await db.query("begin");
+    try {
+      await assert.rejects(db.query(migration), { code: "23505" });
+    } finally {
+      await db.query("rollback");
+    }
+    assert.deepEqual(await membershipRows(db), before);
+    assert.equal((await db.query("select to_regclass('public.family_members_one_active_per_user') as name")).rows[0].name, null);
+
+    await ok(second.client, "remove_family_member", { p_family_id: secondFamily, p_user_id: guardian.id });
+    reconciled = await membershipRows(db);
+    assert.equal(reconciled.length, 2);
+    assert.ok(reconciled.find((row) => row.family_id === secondFamily).removed_at);
+  } finally {
+    await db.end();
+  }
+
+  return async () => {
+    const verify = new Client({ connectionString: url.href });
+    await verify.connect();
+    try {
+      assert.deepEqual(await membershipRows(verify), reconciled, "Upgrade must preserve active and removed rows");
+    } finally {
+      await verify.end();
+    }
+  };
+}
+
 export async function baselineIdentity(status) {
   const person = await clients(status).user("r2-upgrade");
   return async () => {
@@ -35,15 +105,11 @@ export async function baselineIdentity(status) {
 export async function permissionTests(status, sql) {
   const { user, userClient } = clients(status);
   const [owner, other, guardian, outsider, newcomer] = await Promise.all(["owner", "other", "guardian", "outsider", "new"].map((label) => user(label)));
-  async function ok(client, name, args) {
-    const result = await client.rpc(name, args);
-    assert.ifError(result.error);
-    return result.data;
-  }
-  async function denied(client, name, args, code) {
+  async function denied(client, name, args, code, reason) {
     const result = await client.rpc(name, args);
     assert.ok(result.error, `${name} must be denied`);
     if (code) assert.equal(result.error.code, code);
+    if (reason) assert.equal(result.error.message, reason);
   }
   const family = await ok(owner.client, "create_family", { p_name: "Oak family", p_display_name: "Oak owner" });
   const otherFamily = await ok(other.client, "create_family", { p_name: "Elm family", p_display_name: "Elm owner" });
@@ -77,6 +143,28 @@ export async function permissionTests(status, sql) {
   await denied(owner.client, "create_family", { p_name: "Spoof", p_display_name: "Spoof", p_owner_id: outsider.id });
   const invite = async (kind, email) => (await ok(owner.client, "create_invitation", { p_kind: kind, p_scope_id: kind === "circle" ? circle : family, p_email: email }))[0];
   const acceptArgs = (inv, kind = "guardian", extra = {}) => ({ p_kind: kind, p_token: inv.token, p_display_name: "Invited adult", ...extra });
+  const unconsumed = (invitation) => {
+    assert.equal(sql(`select consumed_at is null and consumed_by is null and accepted_family_id is null and revoked_at is null
+      from public.invitations where id = '${invitation.invitation_id}';`), "t");
+  };
+  async function raceMembershipRequests(person, attempts) {
+    const results = await Promise.all(attempts.map(({ command, args }) => person.client.rpc(command, args)));
+    assert.equal(results.filter(({ error }) => !error).length, 1);
+    assert.equal(sql(`select count(*) from public.family_members where user_id = '${person.id}' and removed_at is null;`), "1");
+    for (const [index, { familyName, invitation }] of attempts.entries()) {
+      const { error } = results[index];
+      if (error) {
+        assert.equal(error.code, "PT409");
+        assert.equal(error.message, "active_family_exists");
+        if (invitation) unconsumed(invitation);
+      }
+      if (familyName)
+        assert.equal(sql(`select count(*) from public.families where name = '${familyName}';`), error ? "0" : "1");
+    }
+  }
+  const createAttempt = (familyName) => ({
+    command: "create_family", args: createFamilyArgs(familyName), familyName,
+  });
   const guardianInvite = await invite("guardian", guardian.email.toUpperCase());
   assert.match(guardianInvite.token, /^[a-f0-9]{64}$/);
   assert.equal(sql(`select token_digest = extensions.digest('${guardianInvite.token}', 'sha256') from public.invitations where id = '${guardianInvite.invitation_id}';`), "t");
@@ -103,6 +191,10 @@ export async function permissionTests(status, sql) {
   assert.deepEqual(Object.keys(safeProfiles.data[0]).sort(), ["created_at", "display_name", "id"]);
   const circleInvite = await invite("circle", other.email);
   await denied(other.client, "accept_invitation", acceptArgs(circleInvite, "circle", { p_family_id: family }), "PT404");
+  await denied(owner.client, "accept_invitation", acceptArgs(circleInvite, "circle", { p_new_family_name: "Wrong recipient family" }), "PT404");
+  await denied(other.client, "accept_invitation", acceptArgs(circleInvite, "circle", { p_new_family_name: "Rejected circle family" }), "PT409", "active_family_exists");
+  unconsumed(circleInvite);
+  assert.equal(sql("select count(*) from public.families where name in ('Wrong recipient family', 'Rejected circle family');"), "0");
   const guardianCircle = await invite("circle", guardian.email);
   await denied(guardian.client, "accept_invitation", acceptArgs(guardianCircle, "circle", { p_family_id: family }), "PT404");
   await ok(other.client, "accept_invitation", acceptArgs(circleInvite, "circle", { p_family_id: otherFamily }));
@@ -115,6 +207,8 @@ export async function permissionTests(status, sql) {
   const newArgs = acceptArgs(newInvite, "circle", { p_new_family_name: "New family" });
   const newResults = await Promise.all([newcomer.client.rpc("accept_invitation", newArgs), newcomer.client.rpc("accept_invitation", newArgs)]);
   assert.equal(newResults.filter((r) => !r.error).length, 1);
+  assert.equal(newResults.find((r) => r.error).error.code, "PT410");
+  assert.equal(sql("select count(*) from public.families where name = 'New family';"), "1");
   assert.equal((await newcomer.client.from("families").select("id")).data.length, 1, "Losing transaction rolls back bootstrap");
   for (const state of ["expired", "revoked"]) {
     const inv = await invite("guardian", outsider.email);
@@ -128,13 +222,15 @@ export async function permissionTests(status, sql) {
   }
   const ordinary = await ok(owner.client, "list_invitations", { p_kind: "guardian", p_scope_id: family });
   assert.ok(ordinary.every((r) => !Object.hasOwn(r, "token") && !Object.hasOwn(r, "token_digest")));
-  const multiOwnerFamily = await ok(owner.client, "create_family", { p_name: "Owner race fixture", p_display_name: "Owner" });
+  const [firstOwner, secondOwner] = await Promise.all([user("first-owner-race"), user("second-owner-race")]);
+  const multiOwnerFamily = await ok(firstOwner.client, "create_family", createFamilyArgs("Owner race fixture"));
   // Fixture-only second owner exercises future-safe last-owner locking; there is
   // deliberately no user command to insert/promote an owner.
-  sql(`insert into public.family_members(family_id,user_id,role) values('${multiOwnerFamily}','${other.id}','owner');`);
+  sql(`insert into public.profiles(id,display_name) values('${secondOwner.id}','Second owner');
+    insert into public.family_members(family_id,user_id,role) values('${multiOwnerFamily}','${secondOwner.id}','owner');`);
   const ownerRace = await Promise.all([
-    owner.client.rpc("remove_family_member", { p_family_id: multiOwnerFamily, p_user_id: owner.id }),
-    other.client.rpc("remove_family_member", { p_family_id: multiOwnerFamily, p_user_id: other.id }),
+    firstOwner.client.rpc("remove_family_member", { p_family_id: multiOwnerFamily, p_user_id: firstOwner.id }),
+    secondOwner.client.rpc("remove_family_member", { p_family_id: multiOwnerFamily, p_user_id: secondOwner.id }),
   ]);
   assert.equal(ownerRace.filter((r) => !r.error).length, 1);
   assert.equal(ownerRace.find((r) => r.error).error.code, "PT409");
@@ -176,10 +272,44 @@ export async function permissionTests(status, sql) {
     assert.deepEqual((await guardian.client.from(table).select("*")).data, [], `Removed guardian loses ${table}`);
   }
   await denied(guardian.client, "circle_roster", { p_circle_id: circle }, "PT404");
+  const [{ token: otherGuardianToken }] = await ok(other.client, "create_invitation", {
+    p_kind: "guardian", p_scope_id: otherFamily, p_email: guardian.email,
+  });
+  await ok(guardian.client, "accept_invitation", acceptArgs({ token: otherGuardianToken }));
+  const reactivation = await invite("guardian", guardian.email);
+  const removedAt = () => sql(`select removed_at from public.family_members where family_id = '${family}' and user_id = '${guardian.id}';`);
+  const removedTimestamp = removedAt();
+  await denied(guardian.client, "accept_invitation", acceptArgs(reactivation), "PT409", "active_family_exists");
+  assert.ok(removedTimestamp);
+  assert.equal(removedAt(), removedTimestamp);
+  unconsumed(reactivation);
+  await ok(guardian.client, "remove_family_member", { p_family_id: otherFamily, p_user_id: guardian.id });
+  await ok(guardian.client, "accept_invitation", acceptArgs(reactivation));
+  assert.equal(sql(`select count(*) from public.family_members where user_id = '${guardian.id}' and removed_at is null;`), "1");
+  assert.equal(removedAt(), "");
   await ok(owner.client, "remove_circle_family", { p_circle_id: circle, p_family_id: otherFamily });
   assert.deepEqual((await other.client.from("circles").select("*")).data, []);
   await denied(other.client, "circle_roster", { p_circle_id: circle }, "PT404");
   await denied(other.client, "accept_invitation", acceptArgs(circleInvite, "circle", { p_family_id: otherFamily }), "PT410");
   assert.equal(sql("select string_agg(tablename,',' order by tablename) from pg_tables where schemaname = 'public' and tablename ~ 'replacement';"), "replacement_events");
+  const directRacer = await user("direct-race");
+  await raceMembershipRequests(directRacer, [createAttempt("Direct race A"), createAttempt("Direct race B")]);
+  const guardianAttempt = async (person) => {
+    const invitation = await invite("guardian", person.email);
+    return { command: "accept_invitation", args: acceptArgs(invitation), invitation };
+  };
+  const mixedRacer = await user("direct-guardian-race");
+  await raceMembershipRequests(mixedRacer, [createAttempt("Mixed race family"), await guardianAttempt(mixedRacer)]);
+  const invitationRacer = await user("guardian-circle-race");
+  const competingCircleInvite = await invite("circle", invitationRacer.email);
+  await raceMembershipRequests(invitationRacer, [
+    await guardianAttempt(invitationRacer),
+    {
+      command: "accept_invitation",
+      args: acceptArgs(competingCircleInvite, "circle", { p_new_family_name: "Circle race family" }),
+      familyName: "Circle race family",
+      invitation: competingCircleInvite,
+    },
+  ]);
   console.log("Permission assertions passed: public-key sessions, Data API/RPC denials, scopes, races, expiry, revocation, removal and last owner.");
 }

@@ -10,21 +10,22 @@ async function loadInvitationsPage() {
   if (!user) redirect("/sign-in?next=/app/invitations");
   const { data, error } = await client
     .from("family_members")
-    .select("families(id,name)")
+    .select("role,families(id,name)")
     .eq("user_id", user.id)
-    .eq("role", "owner");
+    .is("removed_at", null)
+    .maybeSingle();
   if (error) throw new Error("Families could not be loaded");
-  return { model: { data } };
+  return {
+    model: {
+      family: data?.families ? { ...data.families, role: data.role } : null,
+    },
+  };
 }
 
-const InvitationsPage = createScreen(loadInvitationsPage, ({ data }) => (
+const InvitationsPage = createScreen(loadInvitationsPage, ({ family }) => (
   <>
     <UI.Heading1>Accept an invitation</UI.Heading1>
-    <AcceptInvitation
-      families={data.flatMap((member) =>
-        member.families ? [member.families] : [],
-      )}
-    />
+    <AcceptInvitation family={family} />
   </>
 ));
 export default InvitationsPage;

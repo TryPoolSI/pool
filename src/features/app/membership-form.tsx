@@ -1,16 +1,21 @@
 import * as UI from "@/ui/elements";
 import { CommandForm } from "@/ui/command-form";
+import type { MembershipState } from "@/lib/membership";
 import { membershipAction } from "@/services/membership-actions";
 export function MembershipForm({
   command,
   fields = {},
   label,
   children,
+  onResult,
+  creates,
 }: {
   command: string;
   fields?: Record<string, string>;
   label: string;
   children?: React.ReactNode;
+  onResult?: (result: MembershipState) => void;
+  creates?: boolean;
 }) {
   return (
     <CommandForm
@@ -18,6 +23,8 @@ export function MembershipForm({
       fields={{ command, ...fields }}
       label={label}
       resultLabel="Open saved membership"
+      onResult={onResult}
+      creates={creates}
     >
       {children}
     </CommandForm>
