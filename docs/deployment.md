@@ -9,9 +9,24 @@
 > remain authoritative. Earlier Next.js-specific validation records describe the
 > pre-migration baseline, not the current runtime.
 
-## Delivery contract
+## Current deployment path (Vercel Git integration)
 
-GitHub Actions is the sole delivery owner. `CI / checks` validates the exact PR
+Vercel's GitHub integration deploys this repository directly. The project
+`pool-8817/pool` is linked to `UWorldJK/pool` with production branch `main`:
+every push to `main` builds `Dockerfile.vercel` with the Container preset and
+promotes it to production. `vercel.json` keeps `git.deploymentEnabled: true` and
+an `ignoreCommand` that exits 0 for every ref except `main`, so other branches
+and PRs are skipped and never produce preview deployments. The build-time
+arguments `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` and
+the runtime `PORT` are Production project environment variables. Builds fail
+fast when either public Supabase value is missing. The `Delivery`
+workflow below is the alternative Actions-owned path; it stays inert
+(`DELIVERY_ENABLED` unset) and its guard rejects `deploymentEnabled: true`, so
+the two paths cannot run at once. Disable the Git integration before enabling it.
+
+## Actions delivery contract (inactive)
+
+GitHub Actions is the delivery owner for this path. `CI / checks` validates the exact PR
 head or merged `main` SHA with Node from `.nvmrc`: `npm ci`, `npm run check`,
 Compose validation with a disposable placeholder environment, and the final
 `linux/amd64` container smoke. Forks receive these checks without release secrets.
@@ -34,11 +49,11 @@ Version 65.4.0 uses `--environment`; `--target` is its deprecated alias.
 
 The [Vercel container path](https://vercel.com/docs/functions/runtimes/container)
 stays `Dockerfile.vercel`, the Container preset and Vercel's own registry. There is
-no extra registry. `vercel.json` disables automatic
-Git deployments with
-[`git.deploymentEnabled: false`](https://vercel.com/docs/project-configuration/git-configuration).
-The provider Git integration must also be disconnected, including deploy hooks
-and other automation that could race Actions.
+no extra registry. Before enabling this path, set
+[`git.deploymentEnabled: false`](https://vercel.com/docs/project-configuration/git-configuration)
+in `vercel.json` and disconnect the provider Git integration, including deploy
+hooks and other automation that could race Actions. The delivery guard enforces
+the `vercel.json` setting.
 
 ## Required owner setup (pending)
 
