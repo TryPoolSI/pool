@@ -17,6 +17,7 @@ import { router, usePathname } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { useSession } from "@/services/session";
+import { familyPath, useActiveFamily } from "@/services/active-family";
 import { queryClient } from "@/services/cache";
 import { Brand, Icon, Avatar } from "@/features/app/presentation";
 import { AuthForm } from "@/features/auth/auth-form";
@@ -31,6 +32,7 @@ const destinations = [
   ["/app/driving", "Driving", "activity"],
 ];
 const setup = [
+  ["/app/profile", "Profile", "users"],
   ["/app/children", "Children", "users"],
   ["/app/vehicles", "Vehicles", "car"],
   ["/app/invitations", "Invitations", "shield"],
@@ -93,6 +95,7 @@ export function ApplicationShell({ children }: { children: ReactNode }) {
     insets = useSafeAreaInsets(),
     { user } = useSession(),
     pathname = usePathname();
+  const { data: family } = useActiveFamily();
   const [refreshing, setRefreshing] = useState(false);
   const content = useRef<ScrollViewInstance>(null);
   useEffect(() => {
@@ -121,9 +124,14 @@ export function ApplicationShell({ children }: { children: ReactNode }) {
     },
   });
   const sidebar = width > 1200 ? 232 : width > 900 ? 205 : 190;
+  const myFamily = family
+    ? [familyPath(family.id), "My family", "users"]
+    : undefined;
+  const setupDestinations = myFamily ? [myFamily, ...setup] : setup;
   const label =
     destinations.find((d) => d[0] === pathname)?.[1] ||
-    setup.find((d) => d[0] === pathname)?.[1] ||
+    setupDestinations.find((d) => d[0] === pathname)?.[1] ||
+    (pathname.startsWith("/app/families/") ? "Family details" : undefined) ||
     (pathname.endsWith("/new") ? "Plan a ride" : "Ride details");
   const setupLinks = (
     <View
@@ -135,7 +143,7 @@ export function ApplicationShell({ children }: { children: ReactNode }) {
         borderColor: colors.line,
       }}
     >
-      {setup.map(([href, label, icon]) => (
+      {setupDestinations.map(([href, label, icon]) => (
         <Link
           key={href}
           href={href}

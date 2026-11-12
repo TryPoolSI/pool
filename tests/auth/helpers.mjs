@@ -72,24 +72,17 @@ export async function account(browser, label) {
     "Email confirmed. Sign in to continue.",
   );
   await submitSignIn(page, email);
-  await expect(page).toHaveURL(/\/app$/);
+  await expect(page).toHaveURL(/\/app\/profile$/);
   return { context, page, email };
 }
 export async function family(page, name, display) {
-  await page.goto("/app");
-  await expandDetails(page);
-  if (
-    await page
-      .getByRole("button", { name: "Create a family", exact: true })
-      .count()
-  )
-    await openAction(page, "Create a family");
+  await page.goto("/app/profile");
+  await page.getByRole("button", { name: "Create a family", exact: true }).click();
   await page.getByLabel("Family name", { exact: true }).fill(name);
-  await page.getByLabel("Your display name").fill(display);
+  await page.getByLabel("Your name", { exact: true }).fill(display);
   await page
     .getByRole("button", { name: "Create family", exact: true })
     .click();
-  await page.getByRole("link", { name: "Open saved membership" }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(name);
   return page.url();
 }

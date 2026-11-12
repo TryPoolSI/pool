@@ -6,7 +6,7 @@ import { beginSessionEnd } from "./session-end";
 import { redirect } from "@/lib/navigation";
 import { createClient, createEmailActionClient } from "@/lib/supabase/client";
 import { isConfirmedEmailUser, verifiedUser } from "@/lib/auth/identity";
-import { appReturnPath, emailLinkType, validTokenHash } from "@/lib/auth/paths";
+import { appReturnPath, emailLinkType, validTokenHash, INVITATIONS_PATH, INVITATION_SIGN_IN } from "@/lib/auth/paths";
 
 export type AuthState = { error?: string; message?: string };
 export const signupConfirmationCopy = [
@@ -44,9 +44,9 @@ export async function signIn(_: AuthState, data: Fields): Promise<AuthState> {
   if (!(await verifiedUser(client)))
     return { error: "Confirm your email before signing in." };
   const next = data.get("next");
-  if (next === null) {
+  if (next === null && data.get("resume_invitation") === "yes") {
     const invitation = await pendingInvitation().catch(() => "");
-    if (invitationParts(invitation)) redirect("/app/invitations");
+    if (invitationParts(invitation)) redirect(INVITATIONS_PATH);
   }
   redirect(appReturnPath(next));
 }
@@ -150,14 +150,14 @@ export async function resetPassword(
   redirect("/sign-in?message=password-updated");
 }
 
-export async function signOut(): Promise<AuthState> {
+export async function signOut(switchAccount = false): Promise<AuthState> {
   const client = await createClient();
-  const finish = beginSessionEnd("signed-out");
+  const finish = beginSessionEnd(switchAccount ? "switch-account" : "signed-out");
   const { error } = await client.auth
     .signOut({ scope: "local" })
     .finally(finish);
   if (error) return { error: "Unable to sign out. Please try again." };
-  redirect("/sign-in?message=signed-out");
+  redirect(switchAccount ? INVITATION_SIGN_IN : "/sign-in?message=signed-out");
 }
 
 export async function confirmEmail(data: Fields): Promise<AuthState> {

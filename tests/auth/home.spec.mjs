@@ -70,7 +70,7 @@ test("Home shows joined rides without confirmed coverage across circles", async 
       await page.setViewportSize({ width: 320, height: 844 });
       const coverage = page.getByRole("region", { name: "Driver coverage" });
       await expect(
-        page.getByRole("heading", { name: "Welcome to Pool" }),
+        page.getByRole("heading", { name: "Profile" }),
       ).toBeVisible();
       await expect(coverage).toHaveCount(0);
 
@@ -90,7 +90,7 @@ test("Home shows joined rides without confirmed coverage across circles", async 
       const memberDriver = await registerDriver(member, family);
       const otherDriver = await registerDriver(other, otherFamily);
 
-      await page.reload();
+      await page.goto("/app");
       await expect(coverage).toContainText(
         "No joined rides need a driver in the next 7 days.",
       );

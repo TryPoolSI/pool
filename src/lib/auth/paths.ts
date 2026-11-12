@@ -1,3 +1,7 @@
+export const INVITATIONS_PATH = "/app/invitations";
+export const INVITATION_SIGN_IN = "/sign-in?next=/app/invitations";
+export const INVITATION_SIGN_UP = "/sign-up?next=/app/invitations";
+
 // Return only normalized application paths, never an arbitrary URL. Decode
 // repeatedly to reject encoded slashes, controls and dot-segment bypasses too.
 export function appReturnPath(value: unknown): string {
@@ -32,4 +36,26 @@ export function validTokenHash(value: unknown): value is string {
   return (
     typeof value === "string" && /^(?:pkce_)?[a-f0-9]{40,128}$/i.test(value)
   );
+}
+
+export function protectedReturnPath(
+  pathname: string,
+  params: Record<string, string | string[] | undefined>,
+) {
+  const names =
+    pathname === "/app/rides/new"
+      ? ["family", "circle"]
+      : pathname.startsWith("/app/rides/")
+        ? ["family", "after_replacement"]
+        : pathname === "/app/children"
+          ? ["family"]
+          : [];
+  const query = new URLSearchParams();
+  for (const name of names) {
+    const value = params[name];
+    if (typeof value === "string" && /^[a-f0-9-]{1,36}$/i.test(value))
+      query.set(name, value);
+  }
+  const search = query.toString();
+  return appReturnPath(search ? `${pathname}?${search}` : pathname);
 }

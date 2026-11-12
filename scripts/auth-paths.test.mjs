@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   appReturnPath,
+  protectedReturnPath,
   emailLinkType,
   validTokenHash,
 } from "../src/lib/auth/paths.ts";
@@ -65,4 +66,21 @@ test("identity comes from getUser, requiring confirmed non-anonymous email", asy
     assert.equal(await verifiedUser(client), expected);
     assert.equal(calls, 1);
   }
+});
+
+test("protected return paths retain ride selectors and keep invitation fragments out of sign-in", () => {
+  const family = "00000000-0000-0000-0000-000000000001";
+  const circle = "00000000-0000-0000-0000-000000000002";
+  assert.equal(
+    protectedReturnPath("/app/rides/new", { family, circle, token: "ignored" }),
+    `/app/rides/new?family=${family}&circle=${circle}`,
+  );
+  assert.equal(
+    protectedReturnPath(`/app/rides/${circle}`, { family, after_replacement: "102" }),
+    `/app/rides/${circle}?family=${family}&after_replacement=102`,
+  );
+  assert.equal(
+    protectedReturnPath("/app/invitations", { "#": "kind=guardian&token=secret" }),
+    "/app/invitations",
+  );
 });

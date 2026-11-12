@@ -10,14 +10,17 @@ import {
   signOut,
 } from "@/services/auth";
 import Link from "@/ui/link";
+import { INVITATIONS_PATH, INVITATION_SIGN_IN } from "@/lib/auth/paths";
 
-function signupMessage() {
+function signupMessage(next?: string) {
   const [intro, signInLabel, conjunction, resetLabel, punctuation] =
     signupConfirmationCopy;
   return (
     <>
       {intro}
-      <Link href="/sign-in">{signInLabel}</Link>
+      <Link href={next === INVITATIONS_PATH ? INVITATION_SIGN_IN : "/sign-in"}>
+        {signInLabel}
+      </Link>
       {conjunction}
       <Link href="/forgot-password">{resetLabel}</Link>
       {punctuation}
@@ -28,9 +31,18 @@ function signupMessage() {
 export function AuthForm({
   mode,
   next,
+  resumeInvitation,
 }: {
-  mode: "sign-in" | "sign-up" | "resend" | "recovery" | "reset" | "sign-out";
+  mode:
+    | "sign-in"
+    | "sign-up"
+    | "resend"
+    | "recovery"
+    | "reset"
+    | "sign-out"
+    | "switch-account";
   next?: string;
+  resumeInvitation?: boolean;
 }) {
   const actions = {
     "sign-in": signIn,
@@ -38,7 +50,8 @@ export function AuthForm({
     resend: resendConfirmation,
     recovery: requestRecovery,
     reset: resetPassword,
-    "sign-out": signOut,
+    "sign-out": () => signOut(),
+    "switch-account": () => signOut(true),
   };
   const labels = {
     "sign-in": "Sign in",
@@ -47,16 +60,17 @@ export function AuthForm({
     recovery: "Send reset link",
     reset: "Save new password",
     "sign-out": "Sign out",
+    "switch-account": "Use a different account",
   };
   return (
     <CommandForm
       action={(values) => actions[mode]({}, new Fields(values))}
-      fields={{ next }}
+      fields={{ next, resume_invitation: resumeInvitation ? "yes" : undefined }}
       label={labels[mode]}
       resetOnSuccess={mode === "sign-up"}
-      renderMessage={mode === "sign-up" ? signupMessage : undefined}
+      renderMessage={mode === "sign-up" ? () => signupMessage(next) : undefined}
     >
-      {mode !== "reset" && mode !== "sign-out" && (
+      {mode !== "reset" && mode !== "sign-out" && mode !== "switch-account" && (
         <UI.Label>
           Email address
           <UI.Field

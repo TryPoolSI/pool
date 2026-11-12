@@ -48,10 +48,13 @@ to normalized `/app` paths; arbitrary/forwarded origins cannot choose a redirect
 An authenticated user can choose a new password from `/reset-password` too.
 
 Membership invitations remain separate email-bound, single-use capabilities in a
-URL fragment. Initial links and hash changes are retained through sign-in, removed
-from the visible address, and require separate preview and explicit acceptance.
-After confirming in another browser or device, sign in with the invited email
-and reopen the original invitation there. Manually copy and deliver invitations;
+URL fragment. Opening an invitation or pasting it on Sign in sets the return
+destination to Invitations. Pool retains the link through sign-in and removes
+the fragment from the visible web address. Preview and acceptance are separate
+actions. After confirming in another browser or device, sign in with the invited
+email and reopen or paste the original invitation there. On ordinary sign-in,
+adults without an active family land in Profile and returning members land on
+Home. Protected ride links retain their supported parameters through sign-in. Manually copy and deliver invitations;
 automated invitation email is not implemented.
 
 ## Local and hosted setup

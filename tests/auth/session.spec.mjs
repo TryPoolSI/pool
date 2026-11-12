@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 import { test, expect } from "@playwright/test";
 import {
   account,
+  family,
   authMail,
   password,
   session,
@@ -47,7 +48,7 @@ test("real signup, separate sessions, token rotation, safe return paths and loca
     await replaceSession(one.page, { ...stale, expires_at: 1 });
     await one.page.reload();
     await expect(
-      one.page.getByRole("heading", { name: "Welcome to Pool" }),
+      one.page.getByRole("heading", { name: "Profile" }),
     ).toBeVisible();
     const renewed = await session(one.page);
     expect(renewed.expires_at).toBeGreaterThan(Date.now() / 1000);
@@ -67,8 +68,12 @@ test("real signup, separate sessions, token rotation, safe return paths and loca
     await expect(one.page).toHaveURL(/sign-in/);
     await two.page.reload();
     await expect(
-      two.page.getByRole("heading", { name: "Welcome to Pool" }),
+      two.page.getByRole("heading", { name: "Profile" }),
     ).toBeVisible();
+    await signIn(one.page, one.email);
+    await expect(one.page).toHaveURL(/\/app\/profile$/);
+    await family(one.page, "Session family", "Returning adult");
+    await signOut(one.page);
     for (const next of [
       "https://evil.example",
       "//evil.example",
@@ -130,13 +135,13 @@ for (const browserState of ["signed out", "signed in as another account"]) {
 
       if (other) {
         await signIn(page, other.email);
-        await expect(page).toHaveURL(/\/app$/);
+        await expect(page).toHaveURL(/\/app\/profile$/);
         await signOut(page);
       }
       await signIn(page, person.email);
       await expect(page.getByRole("alert")).toContainText("Unable to sign in");
       await signIn(page, person.email, "/app", newPassword);
-      await expect(page).toHaveURL(/\/app$/);
+      await expect(page).toHaveURL(/\/app\/profile$/);
 
       await page.goto(link);
       await choosePassword.click();
@@ -273,7 +278,7 @@ test("PKCE callback requires original browser verifier and rejects code replay",
     await expect(other).toHaveURL(/auth\/error/);
     await missing.close();
     await page.goto(callback);
-    await expect(page).toHaveURL("http://localhost:3100/app");
+    await expect(page).toHaveURL("http://localhost:3100/app/profile");
     await page.goto(callback);
     await expect(page).toHaveURL(/auth\/error/);
   } finally {

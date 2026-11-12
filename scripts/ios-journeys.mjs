@@ -8,6 +8,7 @@ import {
   account,
   family,
   invitation,
+  password as browserPassword,
   openAndCheck,
   visit,
   refresh,
@@ -28,6 +29,7 @@ export async function nativeJourneys({ device, run, directory }) {
     "Email address": "email",
     Password: "password",
     "Family name": "name",
+    "Your name": "display_name",
     "Your display name": "display_name",
     "Circle name": "name",
     "Child display name": "display_name",
@@ -59,12 +61,18 @@ export async function nativeJourneys({ device, run, directory }) {
         ]),
     { pressKey: "enter" },
   ];
+  const signInWith = (email, password) => [
+    ...input("Email address", email),
+    ...input("Password", password),
+    { tapOn: { text: "^Sign in$" } },
+    { tapOn: { text: "^Not Now$", optional: true } },
+  ];
   function flow(commands) {
     const path = join(directory, `journey-${++sequence}.yaml`);
     const visibleCommands = commands.flatMap((command) =>
       typeof command === "object" && command.openLink
         ? [command, { tapOn: { text: "^Open$", optional: true } }]
-        : typeof command === "object" && command.tapOn
+        : typeof command === "object" && command.tapOn && !command.tapOn.optional
           ? [
               {
                 scrollUntilVisible: {
@@ -164,23 +172,29 @@ export async function nativeJourneys({ device, run, directory }) {
     tap("Resend confirmation email"),
     { assertVisible: "Email address" },
     tap("Back to sign in"),
-    ...input("Email address", email),
-    ...input("Password", password),
-    { tapOn: { text: "^Sign in$" } },
-    { assertVisible: "Welcome to Pool" },
+    ...signInWith(email, password),
+    { assertVisible: "Profile" },
+    { assertVisible: "Join a family" },
+    tap("Create a family"),
+    ...input("Your name", "Native guardian"),
     ...input("Family name", "Native family"),
-    ...input("Your display name", "Native guardian"),
     { assertVisible: { id: "field-name", text: "Native family" } },
     { assertNotVisible: "Open saved membership" },
     tap("Create family"),
-    tap("Open saved membership"),
     { assertVisible: "Native family" },
+    { assertVisible: "Guardians" },
     open("/app/attention"),
     { assertVisible: "A little planning goes a long way." },
     tap("Pool home"),
-    { assertVisible: "Your families" },
+    { assertVisible: "Your family" },
+    tap("Account"),
+    tap("Sign out"),
+    ...signInWith(email, password),
+    { assertVisible: "Your family" },
+    tap("Menu"),
+    tap("My family"),
     { assertVisible: "Native family" },
-    { assertNotVisible: "^Create (a )?family$" },
+    { assertVisible: "Guardians" },
   ]);
   const signed = await observer.auth.signInWithPassword({ email, password });
   assert.equal(signed.error, null);
@@ -276,10 +290,7 @@ export async function nativeJourneys({ device, run, directory }) {
     await web.page
       .getByRole("button", { name: "Accept invitation", exact: true })
       .click();
-    await web.page
-      .getByRole("status")
-      .filter({ hasText: "Membership accepted" })
-      .waitFor();
+    await web.page.getByRole("heading", { name: "Web family", exact: true }).waitFor();
     const webFamily = (
       await observer.rpc("circle_roster", { p_circle_id: circle })
     ).data.find((member) => member.family_name === "Web family").family_id;
@@ -461,6 +472,37 @@ export async function nativeJourneys({ device, run, directory }) {
       { assertVisible: "Ride completed.*" },
       { takeScreenshot: "pool-ios-completed" },
     ]);
+    const invitee = await account(configuredBrowser, "native-invitee");
+    try {
+      await visit(web.page, `/app/families/${webFamily}`);
+      const guardianLink = await invitation(web.page, invitee.email, "guardian");
+      flow([
+        tap("Account"),
+        tap("Sign out"),
+        { assertVisible: "You are signed out." },
+        open(ridePath),
+        ...signInWith(email, password),
+        { assertVisible: "Ride completed.*" },
+        tap("Account"),
+        tap("Sign out"),
+        tap("Have an invitation link?"),
+        { tapOn: { id: "field-invitation_link" } },
+        { setClipboard: guardianLink },
+        "pasteText",
+        { pressKey: "enter" },
+        tap("Use invitation link"),
+        ...signInWith(invitee.email, browserPassword),
+        tap("Check invitation"),
+        { assertVisible: "Join family: Web family" },
+        ...input("Your display name", "Native invitee"),
+        tap("I explicitly accept this family guardian membership."),
+        tap("Accept invitation"),
+        { assertVisible: "Web family" },
+        { assertVisible: "Guardians" },
+      ]);
+    } finally {
+      await invitee.context.close();
+    }
     console.log(
       "Native/browser journey passed: signup, confirmation, persisted session, membership, planning, independent driver acceptance/consent, optional replacement and per-child handoff receipts.",
     );
