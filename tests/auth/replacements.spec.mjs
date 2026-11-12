@@ -7,6 +7,7 @@ import {
   openAction,
   closeAction,
   account,
+  addChild,
   family,
   invitation,
   openAndCheck,
@@ -29,20 +30,6 @@ async function join(a, b, circle, name) {
     .getByRole("button", { name: "Accept invitation", exact: true })
     .click();
   await expect(b.page.getByRole("heading", { level: 1 })).toHaveText(name);
-}
-async function child(page, name) {
-  await visit(page, "/app/children");
-  if (
-    await page.getByRole("button", { name: "Add a child", exact: true }).count()
-  )
-    await openAction(page, "Add a child");
-  const f = page.locator('[role="form"]').filter({
-    has: page.getByRole("button", { name: "Save child", exact: true }),
-  });
-  await f.getByLabel("Child display name").fill(name);
-  await f.getByLabel("Seat requirement").selectOption("booster");
-  await f.getByRole("button", { name: "Save child", exact: true }).click();
-  await expect(f.getByRole("status")).toContainText("Saved");
 }
 async function vehicle(page, label) {
   await visit(page, "/app/vehicles");
@@ -139,7 +126,7 @@ test("R7 real adults preserve optional swaps, reset unavailable consent and pers
     historySession = await browser.newContext();
   try {
     await captureState(a.page, "empty");
-    await family(a.page, "R7 family A", "R7 Guardian A");
+    const familyA = await family(a.page, "R7 family A", "R7 Guardian A");
     await family(b.page, "R7 family B", "R7 Guardian B");
     await family(d.page, "R7 driver family", "R7 original driver");
     await openAction(a.page, "Create a circle");
@@ -154,8 +141,9 @@ test("R7 real adults preserve optional swaps, reset unavailable consent and pers
     const circle = a.page.url();
     await join(a, b, circle, "R7 family B");
     await join(a, d, circle, "R7 driver family");
-    await child(a.page, "R7 child A");
-    await child(b.page, "R7 child B");
+    await visit(a.page, familyA);
+    await addChild(a.page, "R7 child A");
+    await addChild(b.page, "R7 child B");
     await vehicle(a.page, "R7 candidate car");
     await vehicle(d.page, "R7 original van");
     await visit(a.page, "/app/rides/new");

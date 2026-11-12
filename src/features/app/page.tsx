@@ -84,11 +84,6 @@ function HomeContent({ circles }: { circles: { id: string; name: string }[] }) {
       </UI.Box>
       {circles.length > 0 && <HomeDriverCoverage circles={circles} />}
       <UI.Box className="setup-cards">
-        <Link href="/app/children">
-          <Icon name="users" />
-          <UI.Strong>Your children</UI.Strong>
-          <UI.Inline>Riders and seat requirements →</UI.Inline>
-        </Link>
         <Link href="/app/vehicles">
           <Icon name="car" />
           <UI.Strong>Your vehicles</UI.Strong>

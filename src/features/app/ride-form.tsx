@@ -2,6 +2,7 @@ import * as UI from "@/ui/elements";
 import { Disclosure } from "./presentation";
 import { CommandForm } from "@/ui/command-form";
 import { rideAction } from "@/services/ride-actions";
+import { seatRequirements } from "@/services/family-children";
 export function RideForm({
   command,
   fields = {},
@@ -18,10 +19,7 @@ export function RideForm({
       action={(values) => rideAction({}, values)}
       fields={{ command, ...fields }}
       label={label}
-      creates={
-        command === "createRide" ||
-        (command === "saveOwnChild" && fields.revision === "0")
-      }
+      creates={command === "createRide"}
       resultLabel="Open saved result"
     >
       {children}
@@ -53,7 +51,7 @@ export function ChildChoices({
         ))
       ) : (
         <UI.Paragraph>
-          Add a child in child setup before joining a ride.
+          Add a child in My family before joining a ride.
         </UI.Paragraph>
       )}
     </UI.Fieldset>
@@ -64,9 +62,11 @@ export function SeatField({ value = "standard" }: { value?: string }) {
     <UI.Label>
       Seat requirement
       <UI.Select name="seat_requirement" defaultValue={value} required>
-        <UI.Option value="standard">Standard passenger seat</UI.Option>
-        <UI.Option value="booster">Booster seat</UI.Option>
-        <UI.Option value="child-seat">Child seat</UI.Option>
+        {Object.entries(seatRequirements).map(([seat, label]) => (
+          <UI.Option key={seat} value={seat}>
+            {label}
+          </UI.Option>
+        ))}
       </UI.Select>
     </UI.Label>
   );

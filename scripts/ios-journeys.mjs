@@ -6,6 +6,7 @@ import { chromium } from "@playwright/test";
 import { upcomingRideFields } from "./auth-test-dates.mjs";
 import {
   account,
+  addChild,
   family,
   invitation,
   password as browserPassword,
@@ -208,16 +209,25 @@ export async function nativeJourneys({ device, run, directory }) {
   flow([
     "stopApp",
     "launchApp",
-    open(`/app/families/${ownFamily}`),
+    open(`/app/children?family=${ownFamily}`),
     { assertVisible: "Native family" },
+    ...input("Child display name", "Native child"),
+    tap("Save child"),
+    { assertVisible: "Child added" },
+    ...input("Child display name", "Native sibling"),
+    tap("Save child"),
+    { assertVisible: "Child added" },
+    tap("Edit Native sibling"),
+    ...input("Child display name", "Updated native sibling"),
+    { tapOn: { id: "field-seat_requirement" } },
+    tap("Booster seat"),
+    tap("Update child"),
+    { assertVisible: "Child updated" },
+    tap("Done"),
     tap("Create a circle"),
     ...input("Circle name", "Native circle"),
     tap("Create circle"),
     tap("Open saved membership"),
-    open("/app/children"),
-    ...input("Child display name", "Native child"),
-    tap("Save child"),
-    { assertVisible: "Saved.*" },
     open("/app/vehicles"),
     ...input("Vehicle label", "Native van"),
     ...input("Passenger seats, excluding you", "3"),
@@ -231,13 +241,23 @@ export async function nativeJourneys({ device, run, directory }) {
       .eq("name", "Native circle")
       .single()
   ).data.id;
-  const nativeChild = (
-    await observer
-      .from("children")
-      .select("id")
-      .eq("family_id", ownFamily)
-      .single()
-  ).data.id;
+  const nativeChildren = await observer
+    .from("children")
+    .select("id,display_name,seat_requirement")
+    .eq("family_id", ownFamily)
+    .order("display_name");
+  assert.ifError(nativeChildren.error);
+  assert.deepEqual(
+    nativeChildren.data.map(({ display_name, seat_requirement }) => ({
+      display_name,
+      seat_requirement,
+    })),
+    [
+      { display_name: "Native child", seat_requirement: "standard" },
+      { display_name: "Updated native sibling", seat_requirement: "booster" },
+    ],
+  );
+  const nativeChild = nativeChildren.data[0].id;
   const browser = await chromium.launch();
   const configuredBrowser = {
     newContext: (options) =>
@@ -257,12 +277,7 @@ export async function nativeJourneys({ device, run, directory }) {
       { assertVisible: "You already belong to a family.*The last owner and any circle coordinator must stay.*" },
       { assertNotVisible: "Open saved membership" },
     ]);
-    await visit(web.page, "/app/children");
-    await web.page.getByLabel("Child display name").fill("Web child");
-    await web.page
-      .getByRole("button", { name: "Save child", exact: true })
-      .click();
-    await web.page.getByRole("status").filter({ hasText: "Saved" }).waitFor();
+    await addChild(web.page, "Web child");
     await visit(web.page, "/app/vehicles");
     await web.page.getByLabel("Vehicle label").fill("Web van");
     await web.page.getByLabel("Passenger seats, excluding you").fill("3");

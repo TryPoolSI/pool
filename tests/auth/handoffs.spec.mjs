@@ -5,6 +5,7 @@ import {
   refresh,
   openAction,
   account,
+  addChild,
   family,
   invitation,
   openAndCheck,
@@ -26,20 +27,6 @@ async function join(inviter, person, circleUrl, familyName) {
     .click();
   await expect(person.page.getByRole("heading", { level: 1 })).toHaveText(familyName);
 }
-async function child(page, name) {
-  await visit(page, "/app/children");
-  if (
-    await page.getByRole("button", { name: "Add a child", exact: true }).count()
-  )
-    await openAction(page, "Add a child");
-  const f = page.locator('[role="form"]').filter({
-    has: page.getByRole("button", { name: "Save child", exact: true }),
-  });
-  await f.getByLabel("Child display name").fill(name);
-  await f.getByLabel("Seat requirement").selectOption("booster");
-  await f.getByRole("button", { name: "Save child", exact: true }).click();
-  await expect(f.getByRole("status")).toContainText("Saved");
-}
 const journey = (page, name) =>
   page.getByRole("article", { name: `Journey for ${name}`, exact: true });
 async function report(page, name, button) {
@@ -59,7 +46,7 @@ test("R6: independent driver and guardians persist arrival and confirm each chil
     d = await account(browser, "r6-driver"),
     out = await account(browser, "r6-outside");
   try {
-    await family(a.page, "Handoff family A", "Receiving guardian A");
+    const familyA = await family(a.page, "Handoff family A", "Receiving guardian A");
     await family(b.page, "Handoff family B", "Receiving guardian B");
     await family(d.page, "Handoff driver family", "Reporting driver");
     await family(out.page, "Handoff outside family", "Outside guardian");
@@ -75,8 +62,9 @@ test("R6: independent driver and guardians persist arrival and confirm each chil
     const circleUrl = a.page.url();
     await join(a, b, circleUrl, "Handoff family B");
     await join(a, d, circleUrl, "Handoff driver family");
-    await child(a.page, "Handoff child A");
-    await child(b.page, "Handoff child B");
+    await visit(a.page, familyA);
+    await addChild(a.page, "Handoff child A");
+    await addChild(b.page, "Handoff child B");
     await visit(d.page, "/app/vehicles");
     await d.page.getByLabel("Vehicle label").fill("Handoff van");
     await d.page.getByLabel("Passenger seats, excluding you").fill("3");

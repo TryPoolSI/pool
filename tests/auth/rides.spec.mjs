@@ -10,8 +10,8 @@ import {
   visit,
   refresh,
   openAction,
-  closeAction,
   account,
+  addChild,
   family,
   invitation,
   openAndCheck,
@@ -39,26 +39,6 @@ async function joinCircle(inviter, recipient, circleUrl, familyName) {
     .getByRole("button", { name: "Accept invitation", exact: true })
     .click();
   await expect(recipient.page.getByRole("heading", { level: 1 })).toHaveText(familyName);
-}
-async function child(page, name) {
-  await visit(page, "/app/children");
-  if (
-    await page.getByRole("button", { name: "Add a child", exact: true }).count()
-  )
-    await openAction(page, "Add a child");
-  const form = page.locator('[role="form"]').filter({
-    has: page.getByRole("button", { name: "Save child", exact: true }),
-  });
-  await form.getByLabel("Child display name").fill(name);
-  await form.getByLabel("Seat requirement").selectOption("booster");
-  await form.getByRole("button", { name: "Save child", exact: true }).click();
-  await expect(form.getByRole("status")).toContainText("Saved");
-  await refresh(page);
-  await expect(page.getByRole("heading", { name })).toBeVisible();
-  await openAction(page, `Edit ${name}`);
-  const childId = await privateChildId(page, name);
-  await closeAction(page, `Edit ${name}`);
-  return childId;
 }
 async function plan(page, direction) {
   await visit(page, "/app/rides/new");
@@ -151,8 +131,15 @@ test("R4 real multi-session planning, private offers, endpoint denials, enrollme
     const circleUrl = coordinator.page.url();
     await joinCircle(coordinator, creator, circleUrl, "Creator browser family");
     await joinCircle(coordinator, other, circleUrl, "Invited browser family");
-    const childId = await child(creator.page, "Creator child");
-    await child(other.page, "Invited child");
+    await visit(creator.page, "/app/rides/new");
+    await creator.page
+      .getByRole("main")
+      .getByRole("link", { name: "My family", exact: true })
+      .click();
+    await expect(creator.page).toHaveURL(creatorFamily);
+    await addChild(creator.page, "Creator child");
+    const childId = await privateChildId(creator.page, "Creator child");
+    await addChild(other.page, "Invited child");
     // Public RPCs reject a foreign child's ID under the other real adult's session.
     const own = await ownChild(other.page, "Invited child");
     const foreign = await authenticatedRpc(other.page, "save_own_child", {
@@ -165,6 +152,12 @@ test("R4 real multi-session planning, private offers, endpoint denials, enrollme
     expect(foreign.ok()).toBe(false);
     expect((await foreign.json()).code).toBe("PT404");
     const rideUrl = await plan(creator.page, "outbound");
+    await visit(other.page, rideUrl);
+    await other.page.getByRole("link", { name: "Manage your children" }).click();
+    await expect(other.page).toHaveURL(otherFamilyUrl);
+    await expect(
+      other.page.getByRole("heading", { name: "Invited child", exact: true }),
+    ).toBeVisible();
     await visit(other.page, rideUrl);
     await expect(
       other.page.getByText("Join with your family to view driver status", {
