@@ -1,8 +1,9 @@
 # Families, circles and invitations (R3)
 
-A confirmed adult can create a family in `/app`; creation saves their profile and
-owner membership in one transaction. Open a family to see guardians, invite a
-guardian, remove membership, or create a circle. Family owners manage guardians.
+A confirmed adult without an active family can create one in `/app`. Creation
+saves their profile and owner membership in one transaction. Open a family to
+see guardians, invite a guardian, remove membership, or create a circle. Family
+owners manage guardians.
 Guardians may leave their own family. The last owner cannot leave or be removed.
 There is no self-promotion, ownership invitation or general membership write API.
 An adult can have at most one active family membership. A family can join multiple circles.
@@ -10,11 +11,12 @@ An adult can have at most one active family membership. A family can join multip
 The adult creating a circle must own its initial family. They coordinate family
 membership, with their family joined in the same transaction. Open the circle to
 see its limited family-name roster and invite another family. Circle invitees
-choose a family they own or create a family during acceptance; they never join
-the inviter's family. The coordinator may remove families, and a family owner may
-leave with their own family. The coordinating family/adult must remain; ownership
-and coordinator transfer are deferred. Circle membership grants no driver approval
-or authority over another family's guardians. Children and rides are absent.
+can use the family they own or create a family during acceptance if they have
+no active membership. Guardians ask the coordinator to invite their family’s
+owner. The coordinator may remove families, and a family owner may leave with
+their own family. The coordinating family and adult must remain. Ownership and
+coordinator transfer are deferred. Circle membership grants no driver approval
+or authority over another family's guardians.
 
 ## Manual invitations
 
@@ -79,9 +81,9 @@ ORDER BY user_id, joined_at, family_id;
 ```
 
 For each adult in the results, confirm with the affected families which
-membership to retain. Before removing an extra membership, check that the family
-has another active owner if needed, that the adult is not its required circle
-coordinator, and that they have no active trip responsibility that blocks removal.
+membership to retain. Before removing an extra owner membership, verify that
+another owner remains active. Check the adult's circle coordination and active
+trip responsibilities for any removal blockers.
 Use the existing family member removal command as an authorized actor. It keeps
 the membership row and preserves family IDs, children, rides, circle links, and
 completed history. Review any pending driver coverage or consent that ordinary
