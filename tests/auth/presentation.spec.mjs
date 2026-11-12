@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { AxeBuilder } from "@axe-core/playwright";
-import { account, family, openAction } from "./helpers.mjs";
+import { account, addChild, family, openAction } from "./helpers.mjs";
 import { captureState } from "./presentation.mjs";
 async function accessible(page) {
   const results = await new AxeBuilder({ page })
@@ -92,7 +92,7 @@ test("R8 shared layouts retain desktop composition, mobile navigation, keyboard 
     await page.getByRole("button", { name: "Create family", exact: true }).click();
     await expect(page.getByRole("alert")).toBeVisible();
     await accessible(page);
-    await family(page, "Presentation family", "Presentation guardian");
+    const familyUrl = await family(page, "Presentation family", "Presentation guardian");
     await expect(
       phoneNav.getByRole("link", { name: "Home", exact: true }),
     ).not.toHaveAttribute("aria-current", "page");
@@ -101,6 +101,7 @@ test("R8 shared layouts retain desktop composition, mobile navigation, keyboard 
     await captureState(page, "family");
     await checkHomeLogo(page, phoneNav);
     await menu.click();
+    await expect(dialog.getByRole("link", { name: "Children", exact: true })).toHaveCount(0);
     await dialog.getByRole("link", { name: "My family", exact: true }).click();
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Presentation family");
     const createCircle = page.getByRole("button", {
@@ -123,15 +124,13 @@ test("R8 shared layouts retain desktop composition, mobile navigation, keyboard 
     await expect(page.getByRole("heading", { level: 1 })).toBeInViewport();
     await accessible(page);
     await captureState(page, "circle");
-    await page.goto("/app/children");
-    await page.getByLabel("Child display name").fill("Presentation child");
-    await page.getByRole("button", { name: "Save child", exact: true }).click();
-    await expect(page.getByRole("status")).toContainText("Saved");
+    await page.goto(familyUrl);
+    await addChild(page, "Presentation child");
     await page.goto("/app/rides/new");
     await accessible(page);
     await captureState(page, "planning");
     for (const path of [
-      "/app/children",
+      familyUrl,
       "/app/invitations",
       "/app/profile",
       "/app/vehicles",

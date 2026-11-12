@@ -86,6 +86,21 @@ export async function family(page, name, display) {
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(name);
   return page.url();
 }
+
+export function childAddForm(page) {
+  return page.getByRole("form").filter({
+    has: page.getByRole("button", { name: "Save child", exact: true }),
+  });
+}
+
+export async function addChild(page, name, seat = "booster") {
+  const form = childAddForm(page);
+  await form.getByLabel("Child display name").fill(name);
+  await form.getByLabel("Seat requirement").selectOption(seat);
+  await form.getByRole("button", { name: "Save child", exact: true }).click();
+  await expect(form.getByRole("status")).toHaveText("Child added");
+  await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+}
 export async function invitation(page, email, kind) {
   await expandDetails(page);
   await openAction(

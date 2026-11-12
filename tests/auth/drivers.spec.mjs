@@ -7,6 +7,7 @@ import {
   openAction,
   closeAction,
   account,
+  addChild,
   family,
   invitation,
   openAndCheck,
@@ -30,21 +31,6 @@ async function join(inviter, recipient, circleUrl, familyName) {
     .getByRole("button", { name: "Accept invitation", exact: true })
     .click();
   await expect(recipient.page.getByRole("heading", { level: 1 })).toHaveText(familyName);
-}
-async function addChild(page, name, seat) {
-  await visit(page, "/app/children");
-  if (
-    await page.getByRole("button", { name: "Add a child", exact: true }).count()
-  )
-    await openAction(page, "Add a child");
-  const f = page.locator('[role="form"]').filter({
-    has: page.getByRole("button", { name: "Save child", exact: true }),
-  });
-  await f.getByLabel("Child display name").fill(name);
-  await f.getByLabel("Seat requirement").selectOption(seat);
-  await f.getByRole("button", { name: "Save child", exact: true }).click();
-  await expect(f.getByRole("status")).toContainText("Saved");
-  await refresh(page);
 }
 async function nominate(page, rideUrl) {
   await visit(page, rideUrl);
@@ -157,7 +143,7 @@ test("M1: independent guardians and proposed-only driver explicitly confirm, con
     outside = await account(browser, "m1-outside");
   const second = await browser.newContext();
   try {
-    await family(a.page, "Journey family A", "Guardian A");
+    const familyA = await family(a.page, "Journey family A", "Guardian A");
     await family(b.page, "Journey family B", "Guardian B");
     await family(d.page, "Journey driver family", "Dedicated driver");
     await family(outside.page, "Journey outside family", "Outside adult");
@@ -173,6 +159,7 @@ test("M1: independent guardians and proposed-only driver explicitly confirm, con
     const circleUrl = a.page.url();
     await join(a, b, circleUrl, "Journey family B");
     await join(a, d, circleUrl, "Journey driver family");
+    await visit(a.page, familyA);
     await addChild(a.page, "Journey A child", "booster");
     await addChild(b.page, "Journey B child", "child-seat");
     await visit(d.page, "/app/vehicles");

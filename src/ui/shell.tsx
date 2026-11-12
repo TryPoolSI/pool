@@ -33,7 +33,6 @@ const destinations = [
 ];
 const setup = [
   ["/app/profile", "Profile", "users"],
-  ["/app/children", "Children", "users"],
   ["/app/vehicles", "Vehicles", "car"],
   ["/app/invitations", "Invitations", "shield"],
 ];

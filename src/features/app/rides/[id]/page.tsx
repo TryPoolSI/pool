@@ -17,6 +17,7 @@ import { HandoffPanel } from "../../handoff-panel";
 import { DriverPanel } from "../../driver-panel";
 import { ReplacementPanel } from "../../replacement-panel";
 import { coverageLabel } from "@/lib/drivers";
+import { familyPath } from "@/services/active-family";
 async function loadRideDetail({
   params,
   searchParams,
@@ -636,7 +637,7 @@ const RideDetail = createScreen(
             >
               <Link
                 className="text-link"
-                href={`/app/children?family=${offer.family_id}`}
+                href={familyPath(offer.family_id)}
               >
                 Manage your children
               </Link>

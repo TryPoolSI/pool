@@ -1,10 +1,13 @@
 import { Fields } from "../src/services/fields.ts";
+import { familyChildrenKey } from "../src/services/family-children.ts";
 import assert from "node:assert/strict";
 import test, { after, beforeEach, mock } from "node:test";
+import { QueryClient } from "@tanstack/react-query";
 import { registerAuthTestLoader } from "./auth-test-loader.mjs";
 const loader = registerAuthTestLoader();
 let authenticated = true;
 const rpc = mock.fn(async () => ({ data: "saved-id", error: null }));
+const queryClient = new QueryClient();
 mock.module(new URL("../src/lib/supabase/client.ts", import.meta.url).href, {
   exports: {
     createClient: async () => ({
@@ -27,7 +30,7 @@ mock.module(new URL("../src/lib/supabase/client.ts", import.meta.url).href, {
   },
 });
 mock.module(new URL("../src/services/cache.ts", import.meta.url).href, {
-  exports: { revalidatePath: mock.fn() },
+  exports: { queryClient, revalidatePath: mock.fn() },
 });
 const { rideAction } = await import("../src/services/ride-actions.ts");
 loader.deregister();
@@ -61,6 +64,7 @@ function form(values) {
 }
 beforeEach(() => {
   authenticated = true;
+  queryClient.clear();
   rpc.mock.resetCalls();
   rpc.mock.mockImplementation(async () => ({ data: "saved-id", error: null }));
 });
@@ -91,6 +95,36 @@ test("create uses explicit zone, stable request ID, own context and public-sessi
   assert.equal(args.p_family_id, family);
   assert.equal(Object.hasOwn(args, "p_created_by"), false);
 });
+test("a confirmed child save updates the scoped roster without replacing a newer revision", async () => {
+  const roster = familyChildrenKey("actor", family);
+  const otherRoster = familyChildrenKey("another adult", family);
+  queryClient.setQueryData(roster, []);
+  queryClient.setQueryData(otherRoster, []);
+  rpc.mock.mockImplementation(async () => ({ data: child, error: null }));
+  const draft = form({
+    command: "saveOwnChild",
+    child_id: child.toUpperCase(),
+    family_id: family.toUpperCase(),
+    display_name: "  Kid  ",
+    seat_requirement: "booster",
+    revision: "0",
+  });
+  const saved = {
+    id: child,
+    display_name: "Kid",
+    seat_requirement: "booster",
+    revision: 1,
+  };
+  assert.deepEqual(await rideAction({}, draft), { message: "Child added" });
+  assert.deepEqual(queryClient.getQueryData(roster), [saved]);
+  assert.deepEqual(queryClient.getQueryData(otherRoster), []);
+
+  // A newer roster read can win the race with the original save response.
+  const newer = { ...saved, display_name: "Edited Kid", revision: 2 };
+  queryClient.setQueryData(roster, [newer]);
+  assert.deepEqual(await rideAction({}, draft), { message: "Child added" });
+  assert.deepEqual(queryClient.getQueryData(roster), [newer]);
+});
 test("malformed input, duplicate children, gaps and ambiguous or backwards times stop before RPC", async () => {
   for (const changes of [
     { family_id: "bad" },
@@ -119,8 +153,11 @@ test("all mutations preserve DB authority denials, stale conflicts, and backend 
   for (const extra of actions)
     for (const [code, pattern] of [
       ["PT404", /unavailable/],
-      ["PT409", /Reload/],
-      ["XX000", /could not save/],
+      ["PT409", extra.command === "saveOwnChild" ? /conflicts/ : /Reload/],
+      [
+        "XX000",
+        extra.command === "saveOwnChild" ? /could not confirm/ : /could not save/,
+      ],
     ]) {
       rpc.mock.mockImplementation(async () => ({
         error: { code, message: "private database detail" },

@@ -1,6 +1,5 @@
 import * as UI from "@/ui/elements";
 import { createScreen } from "@/ui/remote";
-import Link from "@/ui/link";
 import {
   PageHeading,
   Disclosure,
@@ -12,6 +11,7 @@ import { createClient } from "@/lib/supabase/client";
 import { verifiedUser } from "@/lib/auth/identity";
 import { InviteForm, MembershipForm, NameField } from "../../membership-form";
 import { InvitationList } from "../../invitation-list";
+import { FamilyChildren } from "../family-children";
 
 async function loadFamilyPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -33,23 +33,20 @@ async function loadFamilyPage({ params }: { params: Promise<{ id: string }> }) {
   const owner = members.data.some(
     (member) => member.user_id === user.id && member.role === "owner",
   );
-  return { model: { id, user, family, members, owner } };
+  return {
+    model: { id: family.data.id, user, family: family.data, members, owner },
+  };
 }
 
 const FamilyPage = createScreen(
   loadFamilyPage,
   ({ id, user, family, members, owner }) => (
     <>
-      <PageHeading
-        title={family.data!.name}
-        action={
-          <Link
-            className="button secondary"
-            href={`/app/children?family=${id}`}
-          >
-            Your children
-          </Link>
-        }
+      <PageHeading title={family.name} />
+      <FamilyChildren
+        key={`${user.id}:${id}`}
+        userId={user.id}
+        familyId={id}
       />
       <UI.Heading2>Guardians</UI.Heading2>
       <UI.List>

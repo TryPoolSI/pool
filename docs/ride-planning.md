@@ -6,8 +6,8 @@ R4 against that branch; retarget and revalidate as predecessors merge. The stack
 is not eligible for production release until reviewed migrations reach validated,
 protected, PR-merged current `main` and the existing release gates pass.
 
-Guardians register their own family's child display names and seat requirements
-at `/app/children`, then plan one occurrence at `/app/rides/new`. At least one
+Guardians add and edit their family's child display names and seat requirements
+in **My family**, then plan one occurrence at `/app/rides/new`. At least one
 own child is required at creation. Other circle families are invited by family,
 never by selecting their private children. Invited guardians join with their own
 children, decline, change their own roster, or remove all their riders to withdraw.
@@ -61,14 +61,13 @@ last-write-wins enrollment or cancellation reversal. Per-family rider lists reje
 foreign children, nulls and duplicates. Removing all own riders withdraws the
 family and revokes its exact-detail access.
 
-Creation and new child setup use a stable request UUID, retained by the rendered
-form across revalidation. Duplicate identical creates return the same ID. Reusing
-an ID for a different payload conflicts; a repeated create cannot reopen a cancelled
-ride. An identical child-create retry returns the original child; edits require
-that child's current revision. Successful creation forms are disabled and link to
-the persisted result and a fresh form for another child/ride. Failed forms retain
-the entered values so a validation correction does not lose the draft. Failures never show
-fake success. Unknown transport failures instruct users to reload before retrying.
+Ride and child creation use a stable request UUID across retries. Duplicate
+identical creates return the same ID. Reusing an ID for a different payload
+conflicts, and a cancelled ride stays cancelled after replay. A confirmed ride
+creation disables its form and links to the saved ride. A confirmed child
+creation updates the family roster and clears the add form for a new draft and
+UUID. After an uncertain child creation, retry with the same details and UUID.
+Failed forms preserve the draft. Child edits require the child's current revision.
 
 ## Dates and migrations
 

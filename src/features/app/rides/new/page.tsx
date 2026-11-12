@@ -4,6 +4,7 @@ import { createScreen } from "@/ui/remote";
 import Link from "@/ui/link";
 import { PageHeading } from "../../presentation";
 import { createClient } from "@/lib/supabase/client";
+import { familyPath } from "@/services/active-family";
 import { RideForm, ChildChoices, LocalTimeField } from "../../ride-form";
 async function loadNewRide({
   searchParams,
@@ -84,7 +85,7 @@ const NewRide = createScreen(
       {!children.data.length ? (
         <UI.Paragraph>
           Add at least one of your own children in{" "}
-          <Link href={`/app/children?family=${family.id}`}>child setup</Link>{" "}
+          <Link href={familyPath(family.id)}>My family</Link>{" "}
           before planning.
         </UI.Paragraph>
       ) : (
