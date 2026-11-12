@@ -1,4 +1,7 @@
-export type SessionEndReason = "signed-out" | "password-updated";
+export type SessionEndReason =
+  | "signed-out"
+  | "password-updated"
+  | "switch-account";
 let pending: SessionEndReason | undefined;
 
 export function beginSessionEnd(reason: SessionEndReason) {

@@ -1,6 +1,7 @@
 import type { Fields } from "@/services/fields";
 export type MembershipState = {
   error?: string;
+  issue?: "invite-unavailable" | "active-family" | "retry-membership";
   message?: string;
   path?: string;
   token?: string;

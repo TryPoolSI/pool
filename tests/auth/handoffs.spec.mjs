@@ -24,9 +24,7 @@ async function join(inviter, person, circleUrl, familyName) {
   await person.page
     .getByRole("button", { name: "Accept invitation", exact: true })
     .click();
-  await expect(person.page.getByRole("status")).toContainText(
-    "Membership accepted",
-  );
+  await expect(person.page.getByRole("heading", { level: 1 })).toHaveText(familyName);
 }
 async function child(page, name) {
   await visit(page, "/app/children");

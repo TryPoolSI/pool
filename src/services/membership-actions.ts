@@ -1,6 +1,8 @@
 import { Fields, type CommandInput } from "./fields";
 
-import { revalidatePath } from "@/services/cache";
+import { queryClient, revalidatePath } from "@/services/cache";
+import { familyPath, loadActiveFamily } from "@/services/active-family";
+import { forgetInvitation } from "@/services/invitation-link";
 import { createClient } from "@/lib/supabase/client";
 import { verifiedUser } from "@/lib/auth/identity";
 import {
@@ -10,29 +12,82 @@ import {
   type MembershipState,
 } from "@/lib/membership";
 
+async function refreshMembership(userId: string) {
+  const account = { queryKey: ["account", userId] };
+  await queryClient.cancelQueries(account);
+  void queryClient.invalidateQueries(account);
+}
+
+function invitationError(
+  code: string,
+  reason?: string,
+  kind?: "guardian" | "circle",
+): MembershipState {
+  return {
+    error: membershipError(code, reason, kind),
+    ...(code === "PT404" ? { issue: "invite-unavailable" } : {}),
+    ...(code === "PT409" && reason === "active_family_exists"
+      ? { issue: "active-family" }
+      : {}),
+  };
+}
+
 async function executeMembership(
-  _previous: MembershipState,
+  previous: MembershipState,
   data: Fields,
 ): Promise<MembershipState> {
   const client = await createClient();
-  if (!(await verifiedUser(client))) return { error: membershipError("PT401") };
   // Every hidden field and previous state is untrusted. RPCs repeat authority
   // checks for callers that bypass these actions. Never log bearer tokens.
+  const command = data.get("command");
+  const familyWrite =
+    command === "create-family" || command === "accept-invitation";
+  const checkBeforeRetry: MembershipState = {
+    error:
+      "Pool could not confirm the result. Check your current family before trying again.",
+    issue: "retry-membership",
+  };
+  const user = await verifiedUser(client).catch(() => null);
+  if (!user) return { error: membershipError("PT401"), issue: previous.issue };
   try {
-    const command = requiredText(data, "command");
+    if (familyWrite && previous.issue === "retry-membership") {
+      const current = await loadActiveFamily(client, user.id);
+      if (current && command === "create-family") {
+        await refreshMembership(user.id);
+        return {
+          error: membershipError("PT409", "active_family_exists"),
+          issue: "active-family",
+        };
+      }
+    }
     let result: {
       data: unknown;
       error: { code: string; message: string } | null;
     };
     let path: string | undefined;
     switch (command) {
-      case "create-family":
-        result = await client.rpc("create_family", {
+      case "create-family": {
+        const created = await client.rpc("create_family", {
           p_name: requiredText(data, "name"),
           p_display_name: requiredText(data, "display_name"),
         });
-        if (!result.error) path = `/app/families/${result.data}`;
+        if (
+          created.error?.code === "PT409" &&
+          created.error.message === "active_family_exists"
+        ) {
+          await refreshMembership(user.id);
+          return {
+            error: membershipError(created.error.code, created.error.message),
+            issue: "active-family",
+          };
+        }
+        if (!created.error) {
+          await refreshMembership(user.id);
+          return { path: familyPath(created.data) };
+        }
+        result = created;
         break;
+      }
       case "create-circle":
         result = await client.rpc("create_circle", {
           p_family_id: uuid(data, "family_id"),
@@ -73,8 +128,7 @@ async function executeMembership(
             p_kind: kind,
             p_token: token,
           });
-          if (preview.error)
-            return { error: membershipError(preview.error.code) };
+          if (preview.error) return invitationError(preview.error.code);
           return {
             preview: {
               name: preview.data[0].scope_name,
@@ -85,7 +139,7 @@ async function executeMembership(
         if (data.get("accept") !== "yes") throw new Error("validation");
         const familyChoice =
           kind === "circle" ? requiredText(data, "family_choice") : null;
-        result = await client.rpc("accept_invitation", {
+        const accepted = await client.rpc("accept_invitation", {
           p_kind: kind,
           p_token: token,
           p_display_name: requiredText(data, "display_name"),
@@ -95,17 +149,21 @@ async function executeMembership(
               ? { p_family_id: uuid(data, "family_choice") }
               : {}),
         });
-        if (!result.error) path = `/app/families/${result.data}`;
-        if (result.error)
-          return {
-            error: membershipError(result.error.code, result.error.message, kind),
-          };
-        revalidatePath("/app", "layout");
-        return {
-          message:
-            "Membership accepted. Open your family to see the saved result.",
-          path,
-        };
+        if (accepted.error) {
+          if (!accepted.error.code) {
+            await refreshMembership(user.id);
+            return checkBeforeRetry;
+          }
+          if (accepted.error.code === "PT409") await refreshMembership(user.id);
+          return invitationError(
+            accepted.error.code,
+            accepted.error.message,
+            kind,
+          );
+        }
+        await refreshMembership(user.id);
+        void forgetInvitation(token).catch(() => {});
+        return { path: familyPath(accepted.data) };
       }
       case "revoke-invitation":
         result = await client.rpc("revoke_invitation", {
@@ -129,11 +187,25 @@ async function executeMembership(
       default:
         throw new Error("validation");
     }
-    if (result.error)
-      return { error: membershipError(result.error.code, result.error.message) };
+    if (result.error) {
+      if (familyWrite && !result.error.code) {
+        await refreshMembership(user.id);
+        return checkBeforeRetry;
+      }
+      return {
+        error: membershipError(result.error.code, result.error.message),
+      };
+    }
     revalidatePath("/app", "layout");
     return { message: "Saved. Membership is up to date.", path };
   } catch (error) {
+    if (
+      familyWrite &&
+      !(error instanceof Error && error.message === "validation")
+    ) {
+      await refreshMembership(user.id);
+      return checkBeforeRetry;
+    }
     return {
       error: membershipError(
         error instanceof Error && error.message === "validation"
@@ -145,7 +217,7 @@ async function executeMembership(
 }
 
 export function membershipAction(
-  previous: Record<string, unknown>,
+  previous: MembershipState,
   input: CommandInput,
 ) {
   return executeMembership(previous, new Fields(input));

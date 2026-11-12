@@ -527,6 +527,7 @@ export function Field({
         disabled={Boolean(disabled)}
       />
     );
+  const plainText = type !== "email" && type !== "password" && type !== "url";
   return (
     <TextInput
       {...keyboardInputProps}
@@ -538,16 +539,16 @@ export function Field({
       onChangeText={change}
       editable={!p.readOnly && !disabled}
       secureTextEntry={type === "password"}
-      autoCapitalize={
-        type === "email" || type === "password" ? "none" : "sentences"
-      }
-      autoCorrect={type !== "email" && type !== "password"}
+      autoCapitalize={plainText ? "sentences" : "none"}
+      autoCorrect={plainText}
       keyboardType={
         type === "email"
           ? "email-address"
-          : type === "number"
-            ? "numeric"
-            : "default"
+          : type === "url"
+            ? "url"
+            : type === "number"
+              ? "numeric"
+              : "default"
       }
       autoComplete={p.autoComplete as never}
       maxLength={p.maxLength}

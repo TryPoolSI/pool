@@ -198,7 +198,7 @@ for (const signedIn of [false, true]) {
       expect((await session(receiver))?.user.id ?? null).toBe(originalUserId);
 
       await submitSignIn(receiver, email);
-      await expect(receiver).toHaveURL(/\/app$/);
+      await expect(receiver).toHaveURL(/\/app\/profile$/);
       expect((await session(receiver)).user.email).toBe(email);
 
       await receiver.goto(link);
@@ -247,7 +247,7 @@ test("an invited adult can continue in the original browser or reopen the invita
     await expect(page.getByRole("button", { name: "Accept invitation" })).toHaveCount(0);
 
     await submitSignIn(receiver, email);
-    await expect(receiver).toHaveURL(/\/app$/);
+    await expect(receiver).toHaveURL(/\/app\/profile$/);
     await receiver.goto(invite);
     await expect(receiver.getByLabel("Invitation link")).toHaveValue(invite);
     await expect(receiver.getByRole("button", { name: "Accept invitation" })).toHaveCount(0);
@@ -258,7 +258,7 @@ test("an invited adult can continue in the original browser or reopen the invita
     await receiver.getByLabel("Your display name").fill("New guardian");
     await receiver.getByRole("checkbox").check();
     await receiver.getByRole("button", { name: "Accept invitation" }).click();
-    await expect(receiver.getByRole("status")).toHaveText(/Membership accepted/);
+    await expect(receiver.getByRole("heading", { level: 1 })).toHaveText("Signup invitation family");
   } finally {
     await newBrowser.close();
     await owner.context.close();

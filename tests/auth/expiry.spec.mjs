@@ -21,7 +21,7 @@ test("an actually expired signed token with an invalid refresh token cannot reta
     await person.page.reload();
     await expect(person.page).toHaveURL(/sign-in/);
     await expect(
-      person.page.getByRole("heading", { name: "Welcome to Pool" }),
+      person.page.getByRole("heading", { name: "Profile" }),
     ).toHaveCount(0);
   } finally {
     await person.context.close();

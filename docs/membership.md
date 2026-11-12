@@ -1,6 +1,7 @@
 # Families, circles and invitations (R3)
 
-A confirmed adult without an active family can create one in `/app`. Creation
+A confirmed adult without an active family lands in **Profile** at `/app/profile`.
+Choose **Create a family** and enter your personal name and family name. Creation
 saves their profile and owner membership in one transaction. Open a family to
 see guardians, invite a guardian, remove membership, or create a circle. Family
 owners manage guardians.
@@ -29,12 +30,17 @@ never in invitation history. Treat a copied link as private and revoke/recreate 
 if lost. Owners/coordinators see only their own scope's invitation email history;
 ordinary guardians and circle members cannot enumerate invitation records.
 
-Sign in with the invited, confirmed email, then open or paste the link under
-**Invitations**. If sign-in discards the fragment, reopen or paste the original
-link after signing in. The token is in a URL fragment rather than a request URL,
-and is removed from the address bar after loading. No GET checks or consumes it.
+Ask a family owner for a guardian invitation to join an existing family. Open
+the link, paste it from **Have an invitation link?** on Sign in, or choose
+**Join a family** in Profile to paste it after signing in. Use the invited,
+confirmed email. **Use a different account** returns to sign-in with the same
+invitation. The capability is in the URL fragment and is removed from the
+address bar after capture. No GET checks or consumes it.
 **Check invitation** is an authenticated POST returning a minimal target label.
 Acceptance is a separate checked action with an explicit confirmation checkbox.
+After creating a family or accepting either type of invitation, Pool opens the
+family dashboard. Return to it through **My family**.
+
 The database rechecks verified email, target, scope, expiry, revocation, current
 family ownership and consumed status. Membership insertion/optional family
 creation and consumption commit together. Losing concurrent acceptance rolls back,

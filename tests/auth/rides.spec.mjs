@@ -15,7 +15,7 @@ import {
   family,
   invitation,
   openAndCheck,
-  password,
+  submitSignIn,
 } from "./helpers.mjs";
 import { captureState } from "./presentation.mjs";
 import { test, expect } from "@playwright/test";
@@ -38,9 +38,7 @@ async function joinCircle(inviter, recipient, circleUrl, familyName) {
   await recipient.page
     .getByRole("button", { name: "Accept invitation", exact: true })
     .click();
-  await expect(recipient.page.getByRole("status")).toContainText(
-    "Membership accepted",
-  );
+  await expect(recipient.page.getByRole("heading", { level: 1 })).toHaveText(familyName);
 }
 async function child(page, name) {
   await visit(page, "/app/children");
@@ -129,7 +127,7 @@ test("R4 real multi-session planning, private offers, endpoint denials, enrollme
       "Creator browser family",
       "Creator adult",
     );
-    await family(other.page, "Invited browser family", "Invited adult");
+    const otherFamilyUrl = await family(other.page, "Invited browser family", "Invited adult");
     await family(
       coordinator.page,
       "Coordinator browser family",
@@ -242,14 +240,11 @@ test("R4 real multi-session planning, private offers, endpoint denials, enrollme
     );
     await visit(other.page, rideUrl);
     const secondPage = await independent.newPage();
-    await visit(secondPage, "/sign-in");
-    await secondPage.getByLabel("Email address").fill(other.email);
-    await secondPage.getByLabel("Password", { exact: true }).fill(password);
-    await secondPage
-      .getByRole("button", { name: "Sign in", exact: true })
-      .click();
-    await expect(secondPage).toHaveURL(/\/app$/);
-    await visit(secondPage, rideUrl);
+    const rideReturn = new URL(rideUrl);
+    rideReturn.searchParams.set("family", new URL(otherFamilyUrl).pathname.split("/").at(-1));
+    await secondPage.goto(rideReturn.href);
+    await submitSignIn(secondPage, other.email);
+    await expect(secondPage).toHaveURL(rideReturn.href);
     await other.page.getByLabel("Invited child", { exact: true }).check();
     await secondPage.getByLabel("Invited child", { exact: true }).check();
     await Promise.all([

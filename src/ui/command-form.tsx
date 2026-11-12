@@ -1,4 +1,4 @@
-import { Fragment, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { router } from "expo-router";
 import * as Clipboard from "expo-clipboard";
 import Constants from "expo-constants";
@@ -23,6 +23,7 @@ export function CommandForm({
   label,
   children,
   creates = false,
+  disabled = false,
   resultLabel = "Open saved result",
   onResult,
   focusTarget,
@@ -34,6 +35,7 @@ export function CommandForm({
   label: string;
   children?: ReactNode;
   creates?: boolean;
+  disabled?: boolean;
   resultLabel?: string;
   focusTarget?: string;
   onResult?: (result: MembershipState) => void;
@@ -44,6 +46,13 @@ export function CommandForm({
     [pending, setPending] = useState(false),
     [copied, setCopied] = useState(false);
   const busy = useRef(false);
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const [fieldVersion, setFieldVersion] = useState(0);
   const [requestFields] = useState(() =>
     Object.fromEntries(
@@ -59,11 +68,12 @@ export function CommandForm({
     ),
   );
   async function submit(values: CommandInput) {
-    if (busy.current) return;
+    if (busy.current || disabled) return;
     busy.current = true;
     setPending(true);
     try {
       const result = await action({ ...fields, ...requestFields, ...values });
+      if (!mounted.current) return;
       if (result) {
         setState(result);
         if (resetOnSuccess && !result.error)
@@ -71,6 +81,7 @@ export function CommandForm({
         onResult?.(result);
       }
     } catch (error) {
+      if (!mounted.current) return;
       if (error instanceof Navigation) router.replace(error.target as never);
       else
         setState({
@@ -79,7 +90,7 @@ export function CommandForm({
         });
     } finally {
       busy.current = false;
-      setPending(false);
+      if (mounted.current) setPending(false);
     }
   }
   const origin =
@@ -93,7 +104,7 @@ export function CommandForm({
   return (
     <Form
       onValues={submit}
-      disabled={pending || Boolean(creates && state.path)}
+      disabled={disabled || pending || Boolean(creates && state.path)}
     >
       <Fieldset>
         {resetOnSuccess ? (

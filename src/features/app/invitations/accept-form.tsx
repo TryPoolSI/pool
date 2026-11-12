@@ -1,55 +1,88 @@
 import { useEffect, useState } from "react";
+import { router } from "expo-router";
 import * as UI from "@/ui/elements";
+import Link from "@/ui/link";
 import { CommandForm } from "@/ui/command-form";
+import { AuthForm } from "@/features/auth/auth-form";
+import {
+  InvitationLinkField,
+  invalidInvitationLink,
+} from "@/features/invitations/link-field";
 import { membershipAction } from "@/services/membership-actions";
-import { NameField } from "../membership-form";
+import { familyPath, type ActiveFamily } from "@/services/active-family";
+import { useSession } from "@/services/session";
+import type { MembershipState } from "@/lib/membership";
+import { MembershipForm, NameField } from "../membership-form";
 import {
   onInvitation,
   rememberInvitation,
   invitationParts,
-  forgetInvitation,
 } from "@/services/invitation-link";
-type ActiveFamily = { id: string; name: string; role: string };
 
-export function AcceptInvitation({ family }: { family: ActiveFamily | null }) {
+export function AcceptInvitation({
+  family,
+  membershipReady,
+}: {
+  family: ActiveFamily | null | undefined;
+  membershipReady: boolean;
+}) {
   const [link, setLink] = useState("");
-  useEffect(() => onInvitation(setLink), []);
+  const [invalid, setInvalid] = useState(false);
+  useEffect(
+    () =>
+      onInvitation((value) => {
+        setLink(value);
+        setInvalid(Boolean(value) && !invitationParts(value));
+      }),
+    [],
+  );
   const parsed = invitationParts(link);
   return (
     <>
       <UI.Paragraph>
-        Sign in with the invited email, then open your link or paste it here.
-        Opening a link does not accept it.
+        A guardian invitation lets you join an existing family. A circle
+        invitation lets your own family join a circle.
       </UI.Paragraph>
-      <UI.Label>
-        Invitation link
-        <UI.Field
-          value={link}
-          onChange={(e) => {
-            setLink(e.target.value);
-            void rememberInvitation(e.target.value);
-          }}
-        />
-      </UI.Label>
+      <UI.Paragraph>
+        Sign in with the invited email, then open the link or paste it here.
+        Check the invitation before you accept.
+      </UI.Paragraph>
+      <InvitationLinkField
+        value={link}
+        onChange={(value) => {
+          setInvalid(false);
+          setLink(value);
+        }}
+      />
+      {invalid && (
+        <UI.Paragraph role="alert">{invalidInvitationLink}</UI.Paragraph>
+      )}
       <InvitationDecision
-        key={`${parsed?.kind}-${parsed?.token}`}
-        kind={parsed?.kind ?? ""}
-        token={parsed?.token ?? ""}
+        key={parsed ? `${parsed.kind}-${parsed.token}` : "empty"}
+        link={link}
+        parsed={parsed}
         family={family}
+        membershipReady={membershipReady}
       />
     </>
   );
 }
+
 function InvitationDecision({
-  kind,
-  token,
+  link,
+  parsed,
   family,
+  membershipReady,
 }: {
-  kind: string;
-  token: string;
-  family: ActiveFamily | null;
+  link: string;
+  parsed: ReturnType<typeof invitationParts>;
+  family: ActiveFamily | null | undefined;
+  membershipReady: boolean;
 }) {
-  const [preview, setPreview] = useState<{ name: string; expires: string }>();
+  const [preview, setPreview] = useState<MembershipState["preview"]>();
+  const [issue, setIssue] = useState<MembershipState["issue"]>();
+  const { user } = useSession();
+  const kind = parsed?.kind;
   const circleRequiresOwner = kind === "circle" && family?.role === "guardian";
   const invitationSummary = preview && (
     <>
@@ -64,31 +97,42 @@ function InvitationDecision({
   return (
     <>
       <CommandForm
-        action={(values) => membershipAction({}, values)}
-        fields={{ command: "preview-invitation", kind, token }}
+        action={async () => {
+          // The signed-in user can continue checking even if persistence is unavailable.
+          void rememberInvitation(link).catch(() => {});
+          if (!parsed)
+            return link.trim() ? undefined : { error: invalidInvitationLink };
+          return membershipAction(
+            {},
+            { command: "preview-invitation", ...parsed },
+          );
+        }}
         label="Check invitation"
-        onResult={(result) => setPreview(result.preview)}
+        onResult={(result) => {
+          setPreview(result.preview);
+          setIssue(result.issue);
+        }}
       />
+      {invitationSummary}
       {preview && circleRequiresOwner && (
-        <>
-          {invitationSummary}
-          <UI.Paragraph role="status">
-            Ask the circle coordinator to send an invitation to your family’s
-            owner. A family owner can accept on behalf of your family.
-          </UI.Paragraph>
-        </>
+        <UI.Paragraph role="status">
+          Ask the circle coordinator to send an invitation to your family’s
+          owner. A family owner can accept on behalf of your family.
+        </UI.Paragraph>
       )}
-      {preview && !circleRequiresOwner && (
-        <CommandForm
-          action={(values) => membershipAction({}, values)}
-          fields={{ command: "accept-invitation", kind, token }}
+      {preview && parsed && family !== undefined && !circleRequiresOwner && (
+        <MembershipForm
+          command="accept-invitation"
+          fields={parsed}
           label="Accept invitation"
-          resultLabel="Open saved membership"
+          disabled={!membershipReady}
+          creates
           onResult={(result) => {
-            if (!result.error) void forgetInvitation();
+            setIssue(result.issue);
+            if (!result.error && result.path)
+              router.replace(result.path as never);
           }}
         >
-          {invitationSummary}
           <NameField name="display_name" label="Your display name" />
           {kind === "circle" && (
             <>
@@ -103,10 +147,7 @@ function InvitationDecision({
                 </UI.Select>
               </UI.Label>
               {!family && <NameField />}
-              <UI.Paragraph>
-                Only families you own are available. This does not join the
-                inviter’s family or grant driver approval.
-              </UI.Paragraph>
+              <UI.Paragraph>Accept on behalf of your own family.</UI.Paragraph>
             </>
           )}
           <UI.Label className="checkbox-label">
@@ -115,8 +156,19 @@ function InvitationDecision({
             {kind === "guardian" ? "family guardian" : "circle family"}{" "}
             membership.
           </UI.Label>
-        </CommandForm>
+        </MembershipForm>
       )}
+      {issue === "invite-unavailable" && (
+        <>
+          <UI.Paragraph>
+            You’re signed in as {user?.email}. Use the email address on your
+            invitation.
+          </UI.Paragraph>
+          <AuthForm mode="switch-account" />
+        </>
+      )}
+      {(issue === "active-family" || issue === "retry-membership") &&
+        family && <Link href={familyPath(family.id)}>My family</Link>}
     </>
   );
 }

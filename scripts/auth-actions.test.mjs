@@ -110,7 +110,7 @@ test("signup validates adult attestation/password server-side and mail never tru
   assert.deepEqual(auth.signUp.mock.calls[0].arguments, [fields]);
 });
 
-test("password sign-in resumes a saved invitation only without an explicit return path", async () => {
+test("password sign-in resumes a pending invitation after confirmation and honors explicit return paths", async () => {
   const credentials = {
     email: identity.email,
     password: "valid-password",
@@ -118,10 +118,14 @@ test("password sign-in resumes a saved invitation only without an explicit retur
   invitation = `https://pool.example/app/invitations#kind=guardian&token=${"a".repeat(64)}`;
   await assert.rejects(
     actions.signIn({}, form(credentials)),
+    /^Error: redirect:\/app$/,
+  );
+  await assert.rejects(
+    actions.signIn({}, form({ ...credentials, resume_invitation: "yes" })),
     /^Error: redirect:\/app\/invitations$/,
   );
   await assert.rejects(
-    actions.signIn({}, form({ ...credentials, next: "/app/attention" })),
+    actions.signIn({}, form({ ...credentials, resume_invitation: "yes", next: "/app/attention" })),
     /^Error: redirect:\/app\/attention$/,
   );
   invitation = "invalid";

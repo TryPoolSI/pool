@@ -84,11 +84,11 @@ test("R8 shared layouts retain desktop composition, mobile navigation, keyboard 
     await captureState(page, "schedule");
     await page.setViewportSize({ width: 320, height: 844 });
     const phoneNav = page.getByRole("navigation", { name: "Phone navigation" });
-    await checkHomeLogo(page, phoneNav);
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto("/app");
+    await page.goto("/app/profile");
+    await page.getByRole("button", { name: "Create a family", exact: true }).click();
     await page.getByLabel("Family name", { exact: true }).fill(" ");
-    await page.getByLabel("Your display name").fill("Presentation guardian");
+    await page.getByLabel("Your name", { exact: true }).fill("Presentation guardian");
     await page.getByRole("button", { name: "Create family", exact: true }).click();
     await expect(page.getByRole("alert")).toBeVisible();
     await accessible(page);
@@ -99,6 +99,10 @@ test("R8 shared layouts retain desktop composition, mobile navigation, keyboard 
     await expect(page.getByRole("heading", { level: 1 })).toBeInViewport();
     await accessible(page);
     await captureState(page, "family");
+    await checkHomeLogo(page, phoneNav);
+    await menu.click();
+    await dialog.getByRole("link", { name: "My family", exact: true }).click();
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Presentation family");
     const createCircle = page.getByRole("button", {
       name: "Create a circle",
       exact: true,
@@ -129,6 +133,7 @@ test("R8 shared layouts retain desktop composition, mobile navigation, keyboard 
     for (const path of [
       "/app/children",
       "/app/invitations",
+      "/app/profile",
       "/app/vehicles",
       "/app/driving",
       "/app/attention",

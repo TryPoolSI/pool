@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import * as UI from "@/ui/elements";
 import { CommandForm } from "@/ui/command-form";
 import type { MembershipState } from "@/lib/membership";
@@ -9,6 +10,7 @@ export function MembershipForm({
   children,
   onResult,
   creates,
+  disabled,
 }: {
   command: string;
   fields?: Record<string, string>;
@@ -16,15 +18,21 @@ export function MembershipForm({
   children?: React.ReactNode;
   onResult?: (result: MembershipState) => void;
   creates?: boolean;
+  disabled?: boolean;
 }) {
+  const previous = useRef<MembershipState>({});
   return (
     <CommandForm
-      action={(values) => membershipAction({}, values)}
+      action={(values) => membershipAction(previous.current, values)}
       fields={{ command, ...fields }}
       label={label}
       resultLabel="Open saved membership"
-      onResult={onResult}
+      onResult={(result) => {
+        previous.current = result;
+        onResult?.(result);
+      }}
       creates={creates}
+      disabled={disabled}
     >
       {children}
     </CommandForm>
