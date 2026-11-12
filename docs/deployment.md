@@ -14,12 +14,12 @@
 Vercel's GitHub integration deploys this repository directly. The project
 `pool-8817/pool` is linked to `UWorldJK/pool` with production branch `main`:
 every push to `main` builds `Dockerfile.vercel` with the Container preset and
-promotes it to production; every other branch and PR gets a preview deployment.
-`vercel.json` keeps `git.deploymentEnabled: true`. The build-time arguments
-`EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` and the runtime
-`PORT` are project environment variables. They currently target Production only;
-add the Preview target to each of them for PR preview builds to succeed. Builds
-fail fast when either public Supabase value is missing. The `Delivery`
+promotes it to production. `vercel.json` keeps `git.deploymentEnabled: true` and
+an `ignoreCommand` that exits 0 for every ref except `main`, so other branches
+and PRs are skipped and never produce preview deployments. The build-time
+arguments `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` and
+the runtime `PORT` are Production project environment variables. Builds fail
+fast when either public Supabase value is missing. The `Delivery`
 workflow below is the alternative Actions-owned path; it stays inert
 (`DELIVERY_ENABLED` unset) and its guard rejects `deploymentEnabled: true`, so
 the two paths cannot run at once. Disable the Git integration before enabling it.
