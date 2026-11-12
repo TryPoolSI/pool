@@ -35,6 +35,7 @@ import {
   replacementCompletedUpgradeIdentity,
 } from "./replacement-permissions.mjs";
 import { migrationDatabaseTests } from "./migration-database-tests.mjs";
+import { familyVehiclePermissionTests } from "./family-vehicle-permissions.mjs";
 
 // No external URL/key options: this command can only use the fresh CLI project
 // it owns, on ports distinct from the developer's existing pool backend.
@@ -355,6 +356,7 @@ try {
   await driverPermissionTests(status, sql);
   await handoffPermissionTests(status, sql);
   await replacementPermissionTests(status, sql);
+  await familyVehiclePermissionTests(status, sql);
   await migrationDatabaseTests(status, sql);
   console.log(
     `${focusedBrowser ? "R2 upgrade" : "Clean migrations and R2/R3/R4/R5/R6 upgrade"}, generated types and real-session permissions passed.`,

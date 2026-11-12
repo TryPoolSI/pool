@@ -1,4 +1,3 @@
-import { newRequestId } from "@/lib/request-id";
 import * as UI from "@/ui/elements";
 import { createScreen } from "@/ui/remote";
 import Link from "@/ui/link";
@@ -13,6 +12,7 @@ import { createClient } from "@/lib/supabase/client";
 import { rideTime } from "@/lib/rides";
 import { RideForm, ChildChoices } from "../../ride-form";
 import { DriverForm, Confirmation } from "../../driver-form";
+import { RideDriverNomination } from "../../ride-vehicles";
 import { HandoffPanel } from "../../handoff-panel";
 import { DriverPanel } from "../../driver-panel";
 import { ReplacementPanel } from "../../replacement-panel";
@@ -147,6 +147,7 @@ async function loadRideDetail({
     roster,
     options,
     consents,
+    assignment,
   ] = await Promise.all([
     client.from("families").select("id,name"),
     client
@@ -175,6 +176,14 @@ async function loadRideDetail({
         "proposal_id",
         status?.proposal_id ?? "00000000-0000-0000-0000-000000000000",
       ),
+    status?.coverage === "confirmed" &&
+    status.current_proposal_id !== status.proposal_id
+      ? client
+          .from("driver_assignments")
+          .select("driver_id,vehicle_id")
+          .eq("id", status.current_assignment_id)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
   ]);
   if (
     families.error ||
@@ -184,7 +193,8 @@ async function loadRideDetail({
     participation.error ||
     roster.error ||
     options.error ||
-    consents.error
+    consents.error ||
+    assignment.error
   )
     throw new Error("Ride details could not be loaded");
   const locked =
@@ -208,8 +218,19 @@ async function loadRideDetail({
     status?.coverage === "confirmed" || trip.data?.completed_at
       ? status?.current_driver_name || status?.driver_name
       : null;
+  const assignedOption = options.data.find(
+    (option) => option.vehicle_id === assignment.data?.vehicle_id,
+  );
   const driverPanel = status && (
-    <DriverPanel status={status} showLink={false} />
+    <DriverPanel
+      status={status}
+      showLink={false}
+      assignedVehicle={assignedOption && {
+        id: assignedOption.vehicle_id,
+        label: assignedOption.vehicle_label,
+        driverId: assignedOption.driver_id,
+      }}
+    />
   );
   const handoffs = locations.data && (
     <HandoffPanel
@@ -427,47 +448,12 @@ const RideDetail = createScreen(
                   Each invited family must respond before nomination. The driver
                   and families then reply separately.
                 </UI.Paragraph>
-                {options.data.length ? (
-                  <DriverForm
-                    key={`nominate-${offer.revision}`}
-                    command="proposeDriver"
-                    fields={{ ...fields, proposal_id: newRequestId() }}
-                    label="Nominate driver"
-                  >
-                    <UI.Label>
-                      Driver and registered vehicle
-                      <UI.Select name="driver_vehicle" required defaultValue="">
-                        <UI.Option value="" disabled>
-                          Choose a circle adult and vehicle
-                        </UI.Option>
-                        {options.data.map((v) => (
-                          <UI.Option
-                            key={`${v.driver_id}-${v.driver_family_id}-${v.vehicle_id}`}
-                            value={[
-                              v.driver_id,
-                              v.driver_family_id,
-                              v.vehicle_id,
-                              v.vehicle_version,
-                            ].join("|")}
-                          >
-                            {v.display_name} · {v.vehicle_label} ·{" "}
-                            {v.passenger_seats} passenger seats
-                          </UI.Option>
-                        ))}
-                      </UI.Select>
-                    </UI.Label>
-                    <Confirmation>
-                      I nominate this adult and vehicle for this ride’s current
-                      riders and plan.
-                    </Confirmation>
-                  </DriverForm>
-                ) : (
-                  <UI.Paragraph>
-                    No registered vehicles available. An adult must{" "}
-                    <Link href="/app/vehicles">register their own vehicle</Link>{" "}
-                    first.
-                  </UI.Paragraph>
-                )}
+                <RideDriverNomination
+                  key={`nominate-${offer.revision}`}
+                  fields={fields}
+                  options={options.data}
+                  riderCount={riders.data.length}
+                />
               </UI.Section>
             )}
           {status &&

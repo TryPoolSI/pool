@@ -211,6 +211,17 @@ export async function nativeJourneys({ device, run, directory }) {
     "launchApp",
     open(`/app/children?family=${ownFamily}`),
     { assertVisible: "Native family" },
+    { assertVisible: "Add your car" },
+    tap("Skip"),
+    { assertNotVisible: "Add your car" },
+    open("/app"),
+    open(`/app/families/${ownFamily}`),
+    tap("Add your car"),
+    ...input("Vehicle label", "Native van"),
+    ...input("Passenger seats, excluding you", "3"),
+    tap("Save vehicle"),
+    { assertVisible: "Car added" },
+    { assertNotVisible: "Add your car" },
     ...input("Child display name", "Native child"),
     tap("Save child"),
     { assertVisible: "Child added" },
@@ -228,11 +239,6 @@ export async function nativeJourneys({ device, run, directory }) {
     ...input("Circle name", "Native circle"),
     tap("Create circle"),
     tap("Open saved membership"),
-    open("/app/vehicles"),
-    ...input("Vehicle label", "Native van"),
-    ...input("Passenger seats, excluding you", "3"),
-    tap("Save vehicle"),
-    { assertVisible: "Saved.*" },
   ]);
   const circle = (
     await observer
@@ -353,6 +359,16 @@ export async function nativeJourneys({ device, run, directory }) {
       ),
       tap("Nominate driver"),
       ...freshRide(),
+      tap("Add a car"),
+      ...input("Vehicle label", "Native alternate"),
+      ...input("Passenger seats, excluding you", "3"),
+      tap("Save vehicle"),
+      { tapOn: { id: "field-vehicle_selection" } },
+      tap("Native alternate · 3 passenger seats"),
+      tap("I request this car for the ride. The driver and every participating family must approve again."),
+      tap("Request car change"),
+      ...freshRide(),
+      { assertVisible: "Native guardian · Native alternate" },
       ...input("Available passenger seats, excluding you", "3"),
       tap(
         "I can accommodate all 0 booster seats and 0 child seats required for these riders.",
@@ -381,6 +397,18 @@ export async function nativeJourneys({ device, run, directory }) {
       })
       .click();
     await web.page.getByText("Confirmed", { exact: true }).waitFor();
+    flow([
+      ...freshRide(),
+      { tapOn: { id: "field-vehicle_selection" } },
+      tap("Native van · 3 passenger seats"),
+      tap("I request this car for the ride. The driver and every participating family must approve again."),
+      tap("Request car change"),
+      ...freshRide(),
+      { assertVisible: ".*Current driver: Native guardian · Native alternate" },
+      { assertVisible: "Car change awaiting approval" },
+      tap("Keep current car"),
+      { assertVisible: "Original driver remains assigned.*" },
+    ]);
     // Native driver nominates a web replacement; each family provides fresh consent.
     flow([
       ...freshRide(),

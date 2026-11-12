@@ -37,7 +37,7 @@ export async function setup(status) {
   const car=await ok(d.db,"save_vehicle",{p_id:crypto.randomUUID(),p_label:"R6 vehicle",p_passenger_seats:3,p_version:0,p_retire:false});
   const firstRideStart = upcomingRideStart();
   let interval=0;
-  async function confirmed({two=true,consenter=b,driver=d,driverFamily=d.family}={}) {
+  async function proposed({two=true,driver=d,driverFamily=d.family}={}) {
     const start = hoursFrom(firstRideStart, interval * 2);
     const end = hoursFrom(firstRideStart, interval * 2 + 1);
     interval++;
@@ -47,12 +47,16 @@ export async function setup(status) {
     if(driver!==d) vehicle=await ok(driver.db,"save_vehicle",{p_id:crypto.randomUUID(),p_label:"Self car",p_passenger_seats:3,p_version:0,p_retire:false});
     const proposal=await ok(a.db,"propose_driver",{p_id:crypto.randomUUID(),p_ride_id:ride,p_family_id:a.family,p_revision:two?2:1,p_driver_id:driver.id,p_driver_family_id:driverFamily,p_vehicle_id:vehicle,p_vehicle_version:1});
     const revision=two?3:2,reply={p_id:proposal,p_revision:revision};
-    await ok(driver.db,"accept_driver_proposal",{...reply,p_available_seats:3,p_restraints:true});
-    await ok(a.db,"consent_for_own_children",{...reply,p_family_id:a.family,p_child_ids:[children[0]]});
-    if(two) await ok(consenter.db,"consent_for_own_children",{...reply,p_family_id:b.family,p_child_ids:[children[1]]});
     return {ride,revision,reply,vehicle,driver,two,start,end};
   }
-  return {a,b,d,out,bGuardian,driverGuardian,children,car,circle,confirmed,anon:client()};
+  async function confirmed({consenter=b,...options}={}) {
+    const ride = await proposed(options);
+    await ok(ride.driver.db,"accept_driver_proposal",{...ride.reply,p_available_seats:3,p_restraints:true});
+    await ok(a.db,"consent_for_own_children",{...ride.reply,p_family_id:a.family,p_child_ids:[children[0]]});
+    if(ride.two) await ok(consenter.db,"consent_for_own_children",{...ride.reply,p_family_id:b.family,p_child_ids:[children[1]]});
+    return ride;
+  }
+  return {a,b,d,out,bGuardian,driverGuardian,children,car,circle,proposed,confirmed,anon:client()};
 }
 const designation=(r,child,recipient,version=0)=>({p_ride_id:r.ride,p_child_id:child,p_recipient_id:recipient,p_revision:r.revision,p_version:version});
 const command=(r,child,version)=>({p_request_id:crypto.randomUUID(),p_ride_id:r.ride,p_child_id:child,p_revision:r.revision,p_version:version});

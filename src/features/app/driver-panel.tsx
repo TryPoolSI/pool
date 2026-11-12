@@ -6,21 +6,35 @@ import { Avatar, Disclosure, StatusBadge } from "./presentation";
 import { rideTime } from "@/lib/rides";
 import { coverageLabel, type DriverStatus } from "@/lib/drivers";
 import { DriverForm, Confirmation } from "./driver-form";
+import { RideVehicleChange } from "./ride-vehicles";
+
+type AssignedVehicle = { id: string; label: string; driverId: string };
 
 async function loadDriverPanel({
   status,
   showLink = true,
+  assignedVehicle: knownVehicle,
 }: {
   status: DriverStatus;
   showLink?: boolean;
+  assignedVehicle?: AssignedVehicle;
 }) {
   const client = await createClient();
-  const trip = await client
-    .from("ride_trips")
-    .select("completed_at")
-    .eq("ride_id", status.ride_id)
-    .maybeSingle();
+  const [trip, assignment] = await Promise.all([
+    client.from("ride_trips")
+      .select("completed_at")
+      .eq("ride_id", status.ride_id)
+      .maybeSingle(),
+    !knownVehicle && !showLink && status.is_current_driver &&
+    status.current_proposal_id !== status.proposal_id
+      ? client.from("driver_assignments")
+          .select("driver_id,vehicle_id")
+          .eq("id", status.current_assignment_id)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+  ]);
   if (trip.error) throw new Error("Trip status could not be loaded");
+  if (assignment.error) throw new Error("Current assignment could not be loaded");
   const completed = Boolean(
     trip.data?.completed_at ||
     status.current_assignment_release_reason === "completed",
@@ -32,15 +46,46 @@ async function loadDriverPanel({
   const live = status.proposal_status === "pending";
   const candidate =
     status.mode !== "initial" && status.proposal_status !== "confirmed";
+  let assignedVehicle = knownVehicle;
+  if (assignment.data) {
+    const vehicle = await client.from("vehicles")
+      .select("id,label")
+      .eq("id", assignment.data.vehicle_id)
+      .maybeSingle();
+    if (vehicle.error) throw new Error("Assigned vehicle could not be loaded");
+    if (vehicle.data)
+      assignedVehicle = { ...vehicle.data, driverId: assignment.data.driver_id };
+  }
+  const isCarChange =
+    live && status.mode === "optional_swap" &&
+    (assignedVehicle?.driverId === status.driver_id ||
+      (status.is_current_driver && status.is_driver));
+  const canChangeVehicle =
+    !showLink && !trip.data && !status.cancelled_at &&
+    Date.parse(status.starts_at) > Date.now() &&
+    (live ? status.is_driver : status.is_current_driver);
+  const vehicleChangeSource = canChangeVehicle
+    ? {
+        proposalId: live ? status.proposal_id : status.current_proposal_id,
+        revision: live ? status.ride_revision : status.current_proposal_revision,
+        vehicleId: live ? status.vehicle_id : assignedVehicle?.id ?? status.vehicle_id,
+      }
+    : null;
   return {
-    model: { status, showLink, trip, completed, fields, live, candidate },
+    model: {
+      status, showLink, trip, completed, fields, live, candidate,
+      vehicleChangeSource, isCarChange, assignedVehicle,
+    },
   };
 }
 
 export const DriverPanel = createPanel(
   "loadDriverPanel",
   loadDriverPanel,
-  ({ status, showLink, trip, completed, fields, live, candidate }) => (
+  ({
+    status, showLink, trip, completed, fields, live, candidate,
+    vehicleChangeSource, isCarChange, assignedVehicle,
+  }) => (
     <UI.Section className="panel driver-panel">
       <UI.Heading2>Driver and assignment</UI.Heading2>
       <UI.Paragraph className="assignment-state">
@@ -62,14 +107,17 @@ export const DriverPanel = createPanel(
           </UI.Strong>
         </StatusBadge>
         {!completed && candidate && status.coverage === "confirmed" && (
-          <UI.Inline>Current driver: {status.current_driver_name}</UI.Inline>
+          <UI.Inline>
+            Current driver: {status.current_driver_name}
+            {assignedVehicle && ` · ${assignedVehicle.label}`}
+          </UI.Inline>
         )}
       </UI.Paragraph>
       {status.mode !== "initial" && (
         <>
           <UI.Heading3>
             {status.mode === "optional_swap"
-              ? "Optional driver swap"
+              ? isCarChange ? "Car change awaiting approval" : "Optional driver swap"
               : "Unavailable-driver replacement"}
           </UI.Heading3>
           <UI.Paragraph>
@@ -102,7 +150,8 @@ export const DriverPanel = createPanel(
               : completed && status.current_proposal_id === status.proposal_id
                 ? "Trip driver"
                 : candidate
-                  ? "Replacement candidate · " + status.proposal_status
+                  ? (isCarChange ? "Proposed car · " : "Replacement candidate · ") +
+                    status.proposal_status
                   : status.proposal_status === "confirmed"
                     ? "Confirmed driver"
                     : "Driver proposal · " + status.proposal_status}
@@ -161,7 +210,11 @@ export const DriverPanel = createPanel(
       )}
       {status.is_driver && live && (
         <UI.Box id={`driver-reply-${status.ride_id}`}>
-          <Disclosure title="Your driver reply" open={!status.accepted_at}>
+          <Disclosure
+            key={status.proposal_id}
+            title="Your driver reply"
+            open={!status.accepted_at}
+          >
             <UI.Paragraph>
               {status.rider_count} riders · {status.booster_count} booster seats
               · {status.child_seat_count} child seats
@@ -218,10 +271,24 @@ export const DriverPanel = createPanel(
             <DriverForm
               command="declineDriverProposal"
               fields={fields}
-              label="Decline driving"
+              label={isCarChange ? "Keep current car" : "Decline driving"}
             />
           </Disclosure>
         </UI.Box>
+      )}
+      {vehicleChangeSource && (
+        <RideVehicleChange
+          key={vehicleChangeSource.proposalId}
+          rideId={status.ride_id}
+          proposalId={vehicleChangeSource.proposalId}
+          revision={vehicleChangeSource.revision}
+          riderCount={status.rider_count}
+          proposedVehicleId={vehicleChangeSource.vehicleId}
+          assignedVehicleId={assignedVehicle?.id}
+        />
+      )}
+      {!showLink && live && status.is_current_driver && !status.is_driver && (
+        <UI.Paragraph>The pending driver replacement must close before you can change cars.</UI.Paragraph>
       )}
       {!trip.data &&
         (status.is_current_driver ||
