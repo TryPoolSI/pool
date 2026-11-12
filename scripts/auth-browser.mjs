@@ -9,12 +9,13 @@ import {
   rmSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { createServer } from "node:net";
 import assert from "node:assert/strict";
 import {
   permissionTests,
   baselineIdentity,
+  oneFamilyUpgrade,
 } from "./membership-permissions.mjs";
 import {
   ridePermissionTests,
@@ -236,12 +237,26 @@ try {
   });
   await verifyR7();
   const verifyCompletedR7 = await replacementCompletedUpgradeIdentity(status);
+  const oneFamilyMigration = "20261112031905_one_family_per_adult.sql";
   cpSync("supabase/migrations", join(directory, "supabase/migrations"), {
     recursive: true,
+    filter: (path) => !path.endsWith(".sql") || basename(path) < oneFamilyMigration,
   });
   disposableSupabase(["db", "push", "--local", ...args], {
     stdio: ["ignore", "ignore", "inherit"],
   });
+  const migrationPath = join("supabase/migrations", oneFamilyMigration);
+  const verifyOneFamily = await oneFamilyUpgrade(
+    status,
+    readFileSync(migrationPath, "utf8"),
+  );
+  cpSync("supabase/migrations", join(directory, "supabase/migrations"), {
+    recursive: true,
+  });
+  disposableSupabase(["db", "push", "--local", ...args], {
+    stdio: ["ignore", "inherit", "inherit"],
+  });
+  await verifyOneFamily();
   await verifyCompletedR7();
   await verifyR7();
   await verifyR6();

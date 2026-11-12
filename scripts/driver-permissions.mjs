@@ -220,14 +220,13 @@ export async function driverPermissionTests(status,sql) {
   await ok(a.db,"cancel_driver_proposal",{...pv,p_family_id:fa});
 
   // Cross-ride concurrent finalization: same driver, different vehicles, overlapping intervals.
-  const driverOtherFamily=await ok(d.db,"create_family",{p_name:"Driver second context",p_display_name:"Driver D"});
   const otherCircle=await ok(outsider.db,"create_circle",{p_family_id:fout,p_name:"Independent circle"});
   const driverInvitation=(await ok(outsider.db,"create_invitation",{p_kind:"circle",p_scope_id:otherCircle,p_email:d.email}))[0];
-  await ok(d.db,"accept_invitation",{p_kind:"circle",p_token:driverInvitation.token,p_family_id:driverOtherFamily,p_display_name:"Driver D"});
+  await ok(d.db,"accept_invitation",{p_kind:"circle",p_token:driverInvitation.token,p_family_id:fd,p_display_name:"Driver D"});
   const cout=await ok(outsider.db,"save_own_child",childArgs(fout,"Other circle child"));
   const x=await make({two:false});
   const y={ride:await ok(outsider.db,"create_ride",rideArgs(fout,otherCircle,[cout])),revision:1};
-  const px=await propose(x),py={p_id:await ok(outsider.db,"propose_driver",nomination(y,{p_family_id:fout,p_driver_family_id:driverOtherFamily,p_vehicle_id:secondCar})),p_revision:2};
+  const px=await propose(x),py={p_id:await ok(outsider.db,"propose_driver",nomination(y,{p_family_id:fout,p_driver_family_id:fd,p_vehicle_id:secondCar})),p_revision:2};
   for(const p0 of [px,py]) await ok(d.db,"accept_driver_proposal",{...p0,p_available_seats:4,p_restraints:true});
   const races=await Promise.all([a.db.rpc("consent_for_own_children",{...px,p_family_id:fa,p_child_ids:[ca]}),outsider.db.rpc("consent_for_own_children",{...py,p_family_id:fout,p_child_ids:[cout]})]);
   assert.equal(races.filter(z=>!z.error).length,1);assert.equal(races.find(z=>z.error).error.code,"PT424");
@@ -235,18 +234,18 @@ export async function driverPermissionTests(status,sql) {
   const win=xWon?x:y,loss=xWon?y:x,ploss=xWon?py:px;
   const winningDb=xWon?a.db:outsider.db,losingDb=xWon?outsider.db:a.db;
   const winningFamily=xWon?fa:fout,losingFamily=xWon?fout:fa,losingChild=xWon?cout:ca;
-  assert.equal((await state(loss,losingDb)).consent_count,0,"Conflicting final reply rolls back across circles with disjoint family locks");
+  assert.equal((await state(loss,losingDb)).consent_count,0,"Conflicting final reply rolls back across circles");
   await ok(winningDb,"cancel_ride",{p_ride_id:win.ride,p_family_id:winningFamily,p_revision:2});
   assert.equal((await state(win,winningDb)).coverage,"needs_driver");
   assert.equal(await ok(losingDb,"consent_for_own_children",{...ploss,p_family_id:losingFamily,p_child_ids:[losingChild]}),"confirmed","Cancellation releases reservations atomically");
   await ok(d.db,"withdraw_driver",ploss);
-  // Nomination and finalization use the same profile-before-vehicle order,
-  // including the nominator's FK when the driver self-nominates across circles.
+  // Nomination and finalization remain safe when the driver self-nominates
+  // in a second circle using the same family and vehicle.
   const lockRide=await make({two:false}),lockProposal=await propose(lockRide);
   await ok(d.db,"accept_driver_proposal",{...lockProposal,p_available_seats:4,p_restraints:true});
-  const driverChild=await ok(d.db,"save_own_child",childArgs(driverOtherFamily,"Driver's own child"));
-  const selfRide={ride:await ok(d.db,"create_ride",rideArgs(driverOtherFamily,otherCircle,[driverChild])),revision:1};
-  const selfNomination=nomination(selfRide,{p_family_id:driverOtherFamily,p_driver_family_id:driverOtherFamily});
+  const driverChild=await ok(d.db,"save_own_child",childArgs(fd,"Driver's own child"));
+  const selfRide={ride:await ok(d.db,"create_ride",rideArgs(fd,otherCircle,[driverChild])),revision:1};
+  const selfNomination=nomination(selfRide,{p_family_id:fd,p_driver_family_id:fd});
   const blocker=new pg.Client({connectionString:status.DB_URL});await blocker.connect();
   async function waitForWaiters(count) {
     for(let attempt=0;attempt<100;attempt++) {
@@ -265,7 +264,7 @@ export async function driverPermissionTests(status,sql) {
     await waitForWaiters(2);await blocker.query("commit");
     const operations=await Promise.all([nominating,confirming]);operations.forEach(r=>assert.ifError(r.error));
     assert.equal(operations[1].data,"confirmed");
-    await ok(d.db,"cancel_driver_proposal",{p_id:operations[0].data,p_revision:2,p_family_id:driverOtherFamily});
+    await ok(d.db,"cancel_driver_proposal",{p_id:operations[0].data,p_revision:2,p_family_id:fd});
   } finally {await blocker.end();}
   await ok(d.db,"withdraw_driver",lockProposal);
   // Half-open intervals permit adjacent rides using the same vehicle.

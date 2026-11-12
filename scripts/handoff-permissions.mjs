@@ -8,23 +8,29 @@ export async function setup(status) {
   const options={auth:{persistSession:false,autoRefreshToken:false}};
   const client=()=>createClient(status.API_URL,status.PUBLISHABLE_KEY||status.ANON_KEY,options);
   const admin=createClient(status.API_URL,status.SERVICE_ROLE_KEY,options);
-  async function user(label) {
+  async function user(label, ownsFamily = true) {
     const email=`r6-${label}-${crypto.randomUUID()}@example.test`,password=`Pool-${crypto.randomUUID()}!`;
     const created=await admin.auth.admin.createUser({email,password,email_confirm:true});assert.ifError(created.error);
     const db=client();assert.ifError((await db.auth.signInWithPassword({email,password})).error);
     const id=created.data.user.id;
-    const family=await ok(db,"create_family",{p_name:`R6 ${label}`,p_display_name:`R6 ${label}`});
+    const family = ownsFamily
+      ? await ok(db,"create_family",{p_name:`R6 ${label}`,p_display_name:`R6 ${label}`})
+      : undefined;
     return {db,id,email,family};
   }
-  const [a,b,d,out,g]=await Promise.all(["guardian-a","guardian-b","driver","outsider","extra"].map(user));
+  const [a,b,d,out,bGuardian,driverGuardian] = await Promise.all([
+    ...["guardian-a","guardian-b","driver","outsider"].map((label) => user(label)),
+    user("extra-b", false),
+    user("extra-driver", false),
+  ]);
   const circle=await ok(a.db,"create_circle",{p_family_id:a.family,p_name:"R6 handoffs"});
   for (const person of [b,d]) {
     const inv=(await ok(a.db,"create_invitation",{p_kind:"circle",p_scope_id:circle,p_email:person.email}))[0];
     await ok(person.db,"accept_invitation",{p_kind:"circle",p_token:inv.token,p_family_id:person.family,p_display_name:`R6 ${person===b?"guardian-b":"driver"}`});
   }
-  for (const owner of [b,d]) {
-    const inv=(await ok(owner.db,"create_invitation",{p_kind:"guardian",p_scope_id:owner.family,p_email:g.email}))[0];
-    await ok(g.db,"accept_invitation",{p_kind:"guardian",p_token:inv.token,p_display_name:"R6 extra"});
+  for (const [owner, guardian] of [[b,bGuardian],[d,driverGuardian]]) {
+    const inv=(await ok(owner.db,"create_invitation",{p_kind:"guardian",p_scope_id:owner.family,p_email:guardian.email}))[0];
+    await ok(guardian.db,"accept_invitation",{p_kind:"guardian",p_token:inv.token,p_display_name:"R6 extra"});
   }
   const children=[];
   for (const parent of [a,b]) children.push(await ok(parent.db,"save_own_child",{p_id:crypto.randomUUID(),p_family_id:parent.family,p_display_name:`Child ${parent===a?"A":"B"}`,p_seat_requirement:"booster",p_revision:0}));
@@ -46,7 +52,7 @@ export async function setup(status) {
     if(two) await ok(consenter.db,"consent_for_own_children",{...reply,p_family_id:b.family,p_child_ids:[children[1]]});
     return {ride,revision,reply,vehicle,driver,two,start,end};
   }
-  return {a,b,d,out,g,children,car,circle,confirmed,anon:client()};
+  return {a,b,d,out,bGuardian,driverGuardian,children,car,circle,confirmed,anon:client()};
 }
 const designation=(r,child,recipient,version=0)=>({p_ride_id:r.ride,p_child_id:child,p_recipient_id:recipient,p_revision:r.revision,p_version:version});
 const command=(r,child,version)=>({p_request_id:crypto.randomUUID(),p_ride_id:r.ride,p_child_id:child,p_revision:r.revision,p_version:version});
@@ -68,7 +74,7 @@ export async function handoffUpgradeIdentity(status) {
   };
 }
 export async function handoffPermissionTests(status,sql) {
-  const {a,b,d,out,g,children:[ca,cb],circle,car,confirmed,anon}=await setup(status);
+  const {a,b,d,out,bGuardian,driverGuardian,children:[ca,cb],circle,car,confirmed,anon}=await setup(status);
   const r=await confirmed();
   const nextRide=await confirmed({two:false});
   await ok(a.db,"designate_recipient",designation(nextRide,ca,a.id));
@@ -84,7 +90,7 @@ export async function handoffPermissionTests(status,sql) {
   await ok(b.db,"designate_recipient",db);
   await denied(a.db,"confirm_handoff",command(r,ca,1),"PT409");
   await denied(d.db,"report_arrival",command(r,ca,1),"PT409");
-  for(const actor of [a,b,g,out]) await denied(actor.db,"record_pickup",command(r,ca,1));
+  for(const actor of [a,b,bGuardian,out]) await denied(actor.db,"record_pickup",command(r,ca,1));
   for(const table of ["ride_handoffs","ride_trips","ride_events"]) {
     assert.deepEqual((await out.db.from(table).select("*").eq("ride_id",r.ride)).data,[]);
     const fabricated={
@@ -114,7 +120,7 @@ export async function handoffPermissionTests(status,sql) {
   assert.equal(sql(`select count(*) from public.ride_events where ride_id='${r.ride}'`),"1","Successful duplicate UUID is bound without fabricating another event");
   assert.equal(sql(`select count(*) from public.ride_event_requests where ride_id='${r.ride}'`),"2");
   await denied(b.db,"set_own_ride_riders",{p_ride_id:r.ride,p_family_id:b.family,p_revision:r.revision,p_child_ids:[]},"PT423");
-  await denied(b.db,"designate_recipient",{...db,p_version:1,p_recipient_id:g.id},"PT423");
+  await denied(b.db,"designate_recipient",{...db,p_version:1,p_recipient_id:bGuardian.id},"PT423");
   await denied(d.db,"record_pickup",command(nextRide,ca,1),"PT424");
   assert.equal(sql(`select count(*) from public.ride_trips where ride_id='${nextRide.ride}'`),"0","Adjacent planned interval cannot start while an actual trip is unfinished");
   const pickupB=command(r,cb,1);await ok(d.db,"record_pickup",pickupB);
@@ -124,8 +130,8 @@ export async function handoffPermissionTests(status,sql) {
   const arrivalA=command(r,ca,2),arrivalB=command(r,cb,2);
   await ok(d.db,"report_arrival",arrivalA);await ok(d.db,"report_arrival",arrivalB);
   const receiptA=command(r,ca,3),receiptB=command(r,cb,3);
-  for (const actor of [d,b,g,out]) await denied(actor.db,"confirm_handoff",receiptA,"PT404");
-  await denied(g.db,"confirm_handoff",receiptB,"PT404"); // Same-family guardian, not designated.
+  for (const actor of [d,b,bGuardian,out]) await denied(actor.db,"confirm_handoff",receiptA,"PT404");
+  await denied(bGuardian.db,"confirm_handoff",receiptB,"PT404"); // Same-family guardian, not designated.
   const history=await a.db.from("ride_events").select("*").eq("ride_id",r.ride);assert.ifError(history.error);
   assert.equal(history.data.length,4);assert.ok(history.data.every(e=>e.actor_id===d.id && e.actor_name==="R6 driver" && Number.isFinite(Date.parse(e.occurred_at))));
   assert.deepEqual(await ok(out.db,"trip_attention",{}),[]);
@@ -136,7 +142,7 @@ export async function handoffPermissionTests(status,sql) {
     [d,"withdraw_driver",r.reply],
     [b,"revoke_own_consent",{...r.reply,p_family_id:b.family,p_child_ids:[cb]}],
     [b,"set_own_ride_riders",{p_ride_id:r.ride,p_family_id:b.family,p_revision:r.revision,p_child_ids:[]}],
-    [b,"designate_recipient",{...db,p_version:1,p_recipient_id:g.id}],
+    [b,"designate_recipient",{...db,p_version:1,p_recipient_id:bGuardian.id}],
     [a,"remove_circle_family",{p_circle_id:circle,p_family_id:b.family}],
     [a,"remove_circle_family",{p_circle_id:circle,p_family_id:d.family}],
     [d,"save_vehicle",{p_id:car,p_label:"Changed",p_passenger_seats:3,p_version:1,p_retire:false}],
@@ -209,54 +215,54 @@ export async function handoffPermissionTests(status,sql) {
   // Removing a designated recipient before pickup does not silently substitute
   // another guardian. R5 consent remains valid, but R6 must refuse start.
   const missing=await confirmed();
-  await ok(a.db,"designate_recipient",designation(missing,ca,a.id));await ok(b.db,"designate_recipient",designation(missing,cb,g.id));
-  await ok(b.db,"remove_family_member",{p_family_id:b.family,p_user_id:g.id});
+  await ok(a.db,"designate_recipient",designation(missing,ca,a.id));await ok(b.db,"designate_recipient",designation(missing,cb,bGuardian.id));
+  await ok(b.db,"remove_family_member",{p_family_id:b.family,p_user_id:bGuardian.id});
   await denied(d.db,"record_pickup",command(missing,ca,1),"PT422");
   assert.equal(sql(`select count(*) from public.ride_trips where ride_id='${missing.ride}'`),"0");
   await ok(d.db,"withdraw_driver",missing.reply);
   async function restoreGuardian() {
-    const inv=(await ok(b.db,"create_invitation",{p_kind:"guardian",p_scope_id:b.family,p_email:g.email}))[0];
-    await ok(g.db,"accept_invitation",{p_kind:"guardian",p_token:inv.token,p_display_name:"R6 extra"});
+    const inv=(await ok(b.db,"create_invitation",{p_kind:"guardian",p_scope_id:b.family,p_email:bGuardian.email}))[0];
+    await ok(bGuardian.db,"accept_invitation",{p_kind:"guardian",p_token:inv.token,p_display_name:"R6 extra"});
   }
   await restoreGuardian();
   // Concurrent recipient removal/first pickup either preserves the membership
   // for the active trip or refuses pickup. There can be no orphaned handoff.
   const race=await confirmed();
-  await ok(a.db,"designate_recipient",designation(race,ca,a.id));await ok(b.db,"designate_recipient",designation(race,cb,g.id));
-  const raced=await Promise.all([b.db.rpc("remove_family_member",{p_family_id:b.family,p_user_id:g.id}),d.db.rpc("record_pickup",command(race,ca,1))]);
+  await ok(a.db,"designate_recipient",designation(race,ca,a.id));await ok(b.db,"designate_recipient",designation(race,cb,bGuardian.id));
+  const raced=await Promise.all([b.db.rpc("remove_family_member",{p_family_id:b.family,p_user_id:bGuardian.id}),d.db.rpc("record_pickup",command(race,ca,1))]);
   assert.equal(raced.filter(x=>!x.error).length,1);
   if(!raced[1].error) {
     assert.equal(raced[0].error.code,"PT423");
     await ok(d.db,"record_pickup",command(race,cb,1));
     for(const child of [ca,cb]) await ok(d.db,"report_arrival",command(race,child,2));
-    await ok(a.db,"confirm_handoff",command(race,ca,3));await ok(g.db,"confirm_handoff",command(race,cb,3));
+    await ok(a.db,"confirm_handoff",command(race,ca,3));await ok(bGuardian.db,"confirm_handoff",command(race,cb,3));
   } else {
     assert.equal(raced[1].error.code,"PT422");
     assert.equal(sql(`select count(*) from public.ride_trips where ride_id='${race.ride}'`),"0");
     await restoreGuardian();await ok(d.db,"withdraw_driver",race.reply);
   }
   // A removable driver guardian is held to the same active-trip guard.
-  const driverTrip=await confirmed({two:false,driver:g,driverFamily:d.family});
-  await ok(a.db,"designate_recipient",designation(driverTrip,ca,a.id));await ok(g.db,"record_pickup",command(driverTrip,ca,1));
-  await denied(d.db,"remove_family_member",{p_family_id:d.family,p_user_id:g.id},"PT423");
-  await ok(g.db,"report_arrival",command(driverTrip,ca,2));await ok(a.db,"confirm_handoff",command(driverTrip,ca,3));
-  await ok(d.db,"remove_family_member",{p_family_id:d.family,p_user_id:g.id});
-  assert.deepEqual((await g.db.from("ride_events").select("*").eq("ride_id",driverTrip.ride)).data,[]);
+  const driverTrip=await confirmed({two:false,driver:driverGuardian,driverFamily:d.family});
+  await ok(a.db,"designate_recipient",designation(driverTrip,ca,a.id));await ok(driverGuardian.db,"record_pickup",command(driverTrip,ca,1));
+  await denied(d.db,"remove_family_member",{p_family_id:d.family,p_user_id:driverGuardian.id},"PT423");
+  await ok(driverGuardian.db,"report_arrival",command(driverTrip,ca,2));await ok(a.db,"confirm_handoff",command(driverTrip,ca,3));
+  await ok(d.db,"remove_family_member",{p_family_id:d.family,p_user_id:driverGuardian.id});
+  assert.deepEqual((await driverGuardian.db.from("ride_events").select("*").eq("ride_id",driverTrip.ride)).data,[]);
   // Active recipients/consent grantors and the driver's explicit membership context
   // cannot be removed, even when all scheduled times are in the past.
-  const active=await confirmed({consenter:g});
-  await ok(a.db,"designate_recipient",designation(active,ca,a.id));await ok(b.db,"designate_recipient",designation(active,cb,g.id));
+  const active=await confirmed({consenter:bGuardian});
+  await ok(a.db,"designate_recipient",designation(active,ca,a.id));await ok(b.db,"designate_recipient",designation(active,cb,bGuardian.id));
   sql(`alter table public.rides disable trigger driver_plan; update public.rides set starts_at='2020-01-01Z',ends_at='2020-01-02Z' where id='${active.ride}'; alter table public.rides enable trigger driver_plan;`);
   await ok(d.db,"record_pickup",command(active,ca,1));
-  await denied(b.db,"remove_family_member",{p_family_id:b.family,p_user_id:g.id},"PT423");
-  await denied(g.db,"remove_family_member",{p_family_id:b.family,p_user_id:g.id},"PT423");
+  await denied(b.db,"remove_family_member",{p_family_id:b.family,p_user_id:bGuardian.id},"PT423");
+  await denied(bGuardian.db,"remove_family_member",{p_family_id:b.family,p_user_id:bGuardian.id},"PT423");
   await denied(a.db,"remove_circle_family",{p_circle_id:circle,p_family_id:d.family},"PT423");
-  assert.ok((await ok(g.db,"trip_attention",{})).some(t=>t.ride_id===active.ride));
+  assert.ok((await ok(bGuardian.db,"trip_attention",{})).some(t=>t.ride_id===active.ride));
   await ok(d.db,"record_pickup",command(active,cb,1));
   for(const child of [ca,cb]) await ok(d.db,"report_arrival",command(active,child,2));
-  await ok(a.db,"confirm_handoff",command(active,ca,3));await ok(g.db,"confirm_handoff",command(active,cb,3));
-  await ok(b.db,"remove_family_member",{p_family_id:b.family,p_user_id:g.id});
-  assert.deepEqual((await g.db.from("ride_events").select("*").eq("ride_id",active.ride)).data,[],"Removal immediately revokes private history");
+  await ok(a.db,"confirm_handoff",command(active,ca,3));await ok(bGuardian.db,"confirm_handoff",command(active,cb,3));
+  await ok(b.db,"remove_family_member",{p_family_id:b.family,p_user_id:bGuardian.id});
+  assert.deepEqual((await bGuardian.db.from("ride_events").select("*").eq("ride_id",active.ride)).data,[],"Removal immediately revokes private history");
   // Future R5 coverage still invalidates on consent/membership changes.
   const future=await confirmed();
   await ok(a.db,"designate_recipient",designation(future,ca,a.id));await ok(b.db,"designate_recipient",designation(future,cb,b.id));

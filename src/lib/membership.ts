@@ -7,7 +7,11 @@ export type MembershipState = {
   kind?: string;
   preview?: { name: string; expires: string };
 };
-export function membershipError(code: string) {
+export function membershipError(
+  code: string,
+  reason?: string,
+  invitationKind?: "guardian" | "circle",
+) {
   switch (code) {
     case "PT401":
       return "Your session needs attention. Sign in with a confirmed email and try again.";
@@ -16,6 +20,17 @@ export function membershipError(code: string) {
     case "PT410":
       return "This invitation has expired, was revoked, or has already been used. Ask for a new link.";
     case "PT409":
+      if (reason === "active_family_exists") {
+        if (invitationKind === "guardian")
+          return "You already belong to a family. This invitation is still unused. To join the invited family, leave your current family if eligible. The last owner and any circle coordinator must stay.";
+        if (invitationKind === "circle")
+          return "You already belong to a family. If you own it, refresh and use it to accept this invitation. Otherwise, ask the circle coordinator to invite your family’s owner.";
+        return "You already belong to a family. Open your current family to manage it.";
+      }
+      if (reason === "already_member" && invitationKind)
+        return invitationKind === "guardian"
+          ? "You already belong to the invited family."
+          : "Your family already belongs to this circle.";
       return "This change conflicts with the current membership. The last owner and coordinating family must remain. Reload to see the latest state.";
     case "PT423":
       return "This membership is responsible for an active trip. Finish every child’s handoff before ordinary removal.";

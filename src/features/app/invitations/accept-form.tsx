@@ -9,11 +9,9 @@ import {
   invitationParts,
   forgetInvitation,
 } from "@/services/invitation-link";
-export function AcceptInvitation({
-  families,
-}: {
-  families: { id: string; name: string }[];
-}) {
+type ActiveFamily = { id: string; name: string; role: string };
+
+export function AcceptInvitation({ family }: { family: ActiveFamily | null }) {
   const [link, setLink] = useState("");
   useEffect(() => onInvitation(setLink), []);
   const parsed = invitationParts(link);
@@ -37,7 +35,7 @@ export function AcceptInvitation({
         key={`${parsed?.kind}-${parsed?.token}`}
         kind={parsed?.kind ?? ""}
         token={parsed?.token ?? ""}
-        families={families}
+        family={family}
       />
     </>
   );
@@ -45,14 +43,24 @@ export function AcceptInvitation({
 function InvitationDecision({
   kind,
   token,
-  families,
+  family,
 }: {
   kind: string;
   token: string;
-  families: { id: string; name: string }[];
+  family: ActiveFamily | null;
 }) {
   const [preview, setPreview] = useState<{ name: string; expires: string }>();
-  const [choice, setChoice] = useState(families[0]?.id ?? "new");
+  const circleRequiresOwner = kind === "circle" && family?.role === "guardian";
+  const invitationSummary = preview && (
+    <>
+      <UI.Heading2>
+        {kind === "guardian" ? "Join family" : "Join circle"}: {preview.name}
+      </UI.Heading2>
+      <UI.Paragraph>
+        Expires {new Date(preview.expires).toISOString().slice(0, 10)} (UTC).
+      </UI.Paragraph>
+    </>
+  );
   return (
     <>
       <CommandForm
@@ -61,7 +69,16 @@ function InvitationDecision({
         label="Check invitation"
         onResult={(result) => setPreview(result.preview)}
       />
-      {preview && (
+      {preview && circleRequiresOwner && (
+        <>
+          {invitationSummary}
+          <UI.Paragraph role="status">
+            Ask the circle coordinator to send an invitation to your family’s
+            owner. A family owner can accept on behalf of your family.
+          </UI.Paragraph>
+        </>
+      )}
+      {preview && !circleRequiresOwner && (
         <CommandForm
           action={(values) => membershipAction({}, values)}
           fields={{ command: "accept-invitation", kind, token }}
@@ -71,33 +88,21 @@ function InvitationDecision({
             if (!result.error) void forgetInvitation();
           }}
         >
-          <UI.Heading2>
-            {kind === "guardian" ? "Join family" : "Join circle"}:{" "}
-            {preview.name}
-          </UI.Heading2>
-          <UI.Paragraph>
-            Expires {new Date(preview.expires).toISOString().slice(0, 10)}{" "}
-            (UTC).
-          </UI.Paragraph>
+          {invitationSummary}
           <NameField name="display_name" label="Your display name" />
           {kind === "circle" && (
             <>
               <UI.Label>
                 Family to join the circle
-                <UI.Select
-                  name="family_choice"
-                  value={choice}
-                  onChange={(e) => setChoice(e.target.value)}
-                >
-                  {families.map((f) => (
-                    <UI.Option key={f.id} value={f.id}>
-                      {f.name}
-                    </UI.Option>
-                  ))}
-                  <UI.Option value="new">Create a new family</UI.Option>
+                <UI.Select name="family_choice" value={family?.id ?? "new"}>
+                  {family ? (
+                    <UI.Option value={family.id}>{family.name}</UI.Option>
+                  ) : (
+                    <UI.Option value="new">Create a new family</UI.Option>
+                  )}
                 </UI.Select>
               </UI.Label>
-              {choice === "new" && <NameField />}
+              {!family && <NameField />}
               <UI.Paragraph>
                 Only families you own are available. This does not join the
                 inviter’s family or grant driver approval.
