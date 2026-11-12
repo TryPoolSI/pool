@@ -12,8 +12,12 @@ EXPOSE 3000
 CMD ["npx", "expo", "start", "--web", "--port", "3000", "--host", "lan"]
 
 FROM dependencies AS build
-ARG EXPO_PUBLIC_SUPABASE_URL
-ARG EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+# Vercel Git builds do not forward project environment variables as build
+# arguments, so default to the production Supabase project. Both values are
+# public client configuration that ships in the web bundle; access is enforced
+# by row-level security. Pass --build-arg to override (CI smoke does).
+ARG EXPO_PUBLIC_SUPABASE_URL=https://eeldfdmouvchfjgzbbmb.supabase.co
+ARG EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_mhB40AE5q_VAwGh-4Je3EQ_bvFGXKQf
 ENV NODE_ENV=production
 COPY . .
 RUN test -n "$EXPO_PUBLIC_SUPABASE_URL" && test -n "$EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY" && npm run build
