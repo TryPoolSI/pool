@@ -252,8 +252,15 @@ if (!process.argv.includes("--from-harness") && !smoke) {
     timed("simulator app installation", () =>
       run("xcrun", ["simctl", "install", device.udid, application]),
     );
+    const maestroEnv = { ...process.env };
+    if (ciSmoke) {
+      // Match Maestro's macos-26 CI allowance for cold XCTest startup.
+      maestroEnv.MAESTRO_DRIVER_STARTUP_TIMEOUT ??= "240000";
+    }
     timed("Maestro smoke command", () =>
-      run("maestro", ["--device", device.udid, "test", "tests/ios/smoke.yaml"]),
+      run("maestro", ["--device", device.udid, "test", "tests/ios/smoke.yaml"], {
+        env: maestroEnv,
+      }),
     );
     if (!smoke) {
       const { nativeJourneys } = await import("./ios-journeys.mjs");
