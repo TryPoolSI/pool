@@ -13,9 +13,10 @@ PR-merged current `main`, successful test delivery and the inherited release gat
 2. A guardian plans a ride and invites other circle families. Each family joins
    with its own children or declines. Every included family must respond before
    nomination. A declined family supplies no riders.
-3. An eligible circle adult registers their own vehicle at `/app/vehicles`.
-   Passenger seats exclude the driver. Vehicle labels should contain only a
-   useful description, not license plates or personal information.
+3. An eligible circle adult registers their own vehicle from My family,
+   Vehicles, or the ride’s driver setup. My family prompts only when no active
+   guardian has an active vehicle. Passenger seats exclude the driver. Use a
+   descriptive vehicle label and keep personal information out of it.
 4. A participating guardian nominates a circle adult, including themselves, and
    one of that adult's registered vehicles on the ride detail screen. This
    freezes the ride revision, child/family/seat roster, driver membership context
@@ -46,8 +47,12 @@ original creating adult in their original current family/circle context and is
 atomic with proposal closure and reservation release.
 
 Cancel the pending proposal or withdraw/revoke a confirmed assignment before
-changing enrollment or the selected vehicle. Saving the roster and nominating
-again creates new revisions; old consent never carries forward. M1 has no general
+changing enrollment. Saving the roster and nominating again creates new
+revisions. A nominated or confirmed driver can request a different car on the
+ride detail before scheduled pickup or the first actual pickup, whichever comes
+first. The new proposal needs fresh driver acceptance and consent for every
+enrolled child. A confirmed car remains assigned while a change is reviewed.
+An open replacement review for a different driver must close first. M1 has no general
 route/time editing: cancel/recreate a changed trip. Retire a vehicle instead of
 removing its history. Updates/retirement of a dependent vehicle are rejected.
 Removed participating families cannot be edited by other guardians; resolve their

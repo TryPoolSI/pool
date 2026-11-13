@@ -2,31 +2,57 @@ import * as UI from "@/ui/elements";
 import { useState } from "react";
 import { CommandForm } from "@/ui/command-form";
 import { driverAction } from "@/services/driver-actions";
+import { newRequestId } from "@/lib/request-id";
+
+type OnVehicleSaved = NonNullable<Parameters<typeof driverAction>[2]>;
+
 export function DriverForm({
   command,
   fields = {},
   label,
   children,
+  onVehicleSaved,
 }: {
   command: string;
   fields?: Record<string, string>;
   label: string;
   children?: React.ReactNode;
+  onVehicleSaved?: OnVehicleSaved;
 }) {
+  const creates =
+    command === "proposeDriver" ||
+    command === "requestReplacement" ||
+    command === "requestRideVehicleChange" ||
+    (command === "saveVehicle" && fields.version === "0");
   return (
     <CommandForm
-      action={(values) => driverAction({}, values)}
+      key={creates ? undefined : fields.proposal_id}
+      action={(values) => driverAction({}, values, onVehicleSaved)}
       fields={{ command, ...fields }}
       label={label}
-      creates={
-        command === "proposeDriver" ||
-        command === "requestReplacement" ||
-        (command === "saveVehicle" && fields.version === "0")
-      }
+      creates={creates}
       resultLabel="Open saved result"
     >
       {children}
     </CommandForm>
+  );
+}
+
+export function AddVehicleForm({
+  onVehicleSaved,
+}: {
+  onVehicleSaved?: OnVehicleSaved;
+}) {
+  const [id] = useState(newRequestId);
+  return (
+    <DriverForm
+      command="saveVehicle"
+      fields={{ vehicle_id: id, version: "0" }}
+      label="Save vehicle"
+      onVehicleSaved={onVehicleSaved}
+    >
+      <VehicleFields />
+    </DriverForm>
   );
 }
 

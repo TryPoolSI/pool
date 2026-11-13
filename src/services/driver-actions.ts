@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase/client";
 import { verifiedUser } from "@/lib/auth/identity";
 import { requiredText, uuid } from "@/lib/membership";
 import { driverError, type DriverState } from "@/lib/drivers";
+type SavedVehicle = { id: string; passengerSeats: number };
+
 function integer(data: Fields, name: string, min: number, max = 2147483646) {
   const value = requiredText(data, name, 10);
   if (
@@ -34,6 +36,7 @@ function children(data: Fields) {
 async function executeDriver(
   _previous: DriverState,
   data: Fields,
+  onVehicleSaved?: (vehicle: SavedVehicle) => void | Promise<void>,
 ): Promise<DriverState> {
   try {
     const client = await createClient();
@@ -41,18 +44,39 @@ async function executeDriver(
     const command = requiredText(data, "command");
     let result: { data: unknown; error: { code: string } | null };
     let path: string | undefined;
+    let savedVehicle: SavedVehicle | undefined;
     if (command === "saveVehicle") {
       const retire = data.get("retire") === "yes";
       if (retire && data.get("confirm") !== "yes")
         throw new Error("validation");
+      const id = uuid(data, "vehicle_id");
+      const passengerSeats = integer(data, "passenger_seats", 1, 50);
       result = await client.rpc("save_vehicle", {
-        p_id: uuid(data, "vehicle_id"),
+        p_id: id,
         p_label: requiredText(data, "label"),
-        p_passenger_seats: integer(data, "passenger_seats", 1, 50),
+        p_passenger_seats: passengerSeats,
         p_version: integer(data, "version", 0),
         p_retire: retire,
       });
+      if (!retire) savedVehicle = { id, passengerSeats };
       path = "/app/vehicles";
+    } else if (command === "requestRideVehicleChange") {
+      const selection = requiredText(data, "vehicle_selection", 60).split("|");
+      if (selection.length !== 2 || data.get("confirm") !== "yes")
+        throw new Error("validation");
+      const selected = new Fields({
+        vehicle_id: selection[0],
+        vehicle_version: selection[1],
+      });
+      const ride = uuid(data, "ride_id");
+      result = await client.rpc("request_ride_vehicle_change", {
+        p_id: uuid(data, "request_id"),
+        p_proposal_id: uuid(data, "proposal_id"),
+        p_revision: integer(data, "revision", 1),
+        p_vehicle_id: uuid(selected, "vehicle_id"),
+        p_vehicle_version: integer(selected, "vehicle_version", 1),
+      });
+      path = `/app/rides/${ride}`;
     } else if (
       command === "proposeDriver" ||
       command === "requestReplacement"
@@ -154,6 +178,7 @@ async function executeDriver(
       }
     }
     if (result.error) return { error: driverError(result.error.code) };
+    if (savedVehicle) await onVehicleSaved?.(savedVehicle);
     revalidatePath("/app", "layout");
     return {
       message:
@@ -176,9 +201,11 @@ async function executeDriver(
 export function driverAction(
   previous: Record<string, unknown>,
   input: CommandInput | Fields,
+  onVehicleSaved?: (vehicle: SavedVehicle) => void | Promise<void>,
 ) {
   return executeDriver(
     previous,
     input instanceof Fields ? input : new Fields(input),
+    onVehicleSaved,
   );
 }

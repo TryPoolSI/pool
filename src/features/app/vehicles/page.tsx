@@ -1,9 +1,8 @@
-import { newRequestId } from "@/lib/request-id";
 import * as UI from "@/ui/elements";
 import { createScreen } from "@/ui/remote";
 import { PageHeading, ActionDialog, Icon } from "../presentation";
 import { createClient } from "@/lib/supabase/client";
-import { DriverForm, VehicleFields, Confirmation } from "../driver-form";
+import { AddVehicleForm, DriverForm, VehicleFields, Confirmation } from "../driver-form";
 async function loadVehicles() {
   const client = await createClient();
   const [vehicles, profiles] = await Promise.all([
@@ -83,13 +82,7 @@ const Vehicles = createScreen(loadVehicles, ({ vehicles, profile }) => (
           tone="primary"
           inline={!vehicles.data.length}
         >
-          <DriverForm
-            command="saveVehicle"
-            fields={{ vehicle_id: newRequestId(), version: "0" }}
-            label="Save vehicle"
-          >
-            <VehicleFields />
-          </DriverForm>
+          <AddVehicleForm />
         </ActionDialog>
       </>
     )}

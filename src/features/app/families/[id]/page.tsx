@@ -12,6 +12,7 @@ import { verifiedUser } from "@/lib/auth/identity";
 import { InviteForm, MembershipForm, NameField } from "../../membership-form";
 import { InvitationList } from "../../invitation-list";
 import { FamilyChildren } from "../family-children";
+import { FamilyVehicleSetup } from "../family-vehicle-setup";
 
 async function loadFamilyPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -43,6 +44,11 @@ const FamilyPage = createScreen(
   ({ id, user, family, members, owner }) => (
     <>
       <PageHeading title={family.name} />
+      <FamilyVehicleSetup
+        key={`${user.id}:${id}`}
+        userId={user.id}
+        familyId={id}
+      />
       <FamilyChildren
         key={`${user.id}:${id}`}
         userId={user.id}
