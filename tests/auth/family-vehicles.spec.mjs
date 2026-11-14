@@ -6,6 +6,7 @@ import { authenticatedRpc } from "./rpc.mjs";
 const button = (page, name) => page.getByRole("button", { name, exact: true });
 const familyId = (url) => new URL(url).pathname.split("/").at(-1);
 const vehicleSave = "**/rest/v1/rpc/save_vehicle";
+const availability = "**/rest/v1/rpc/family_has_active_vehicle";
 
 async function rpc(page, name, args) {
   const response = await authenticatedRpc(page, name, args);
@@ -18,6 +19,38 @@ async function saveCar(page, label) {
   await page.getByLabel("Passenger seats, excluding you", { exact: true }).fill("3");
   await button(page, "Save vehicle").click();
 }
+
+test("a new family can save its first car while the family vehicle check is unavailable", async ({ browser }) => {
+  const { context, page } = await account(browser, "vehicle-before-migration");
+  try {
+    await page.route(availability, (route) => route.fulfill({
+      status: 404,
+      contentType: "application/json",
+      body: JSON.stringify({ code: "PGRST202", message: "Function not found in the schema cache" }),
+    }));
+    const dashboard = await family(page, "New car setup family", "Car owner");
+    const prompt = button(page, "Add your car");
+    await prompt.click();
+    await saveCar(page, "First family car");
+    await expect(page.getByText("Car added", { exact: true })).toBeVisible();
+
+    const vehiclesLoaded = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return url.pathname === "/rest/v1/vehicles" &&
+        url.searchParams.get("retired_at") === "is.null" && response.ok();
+    });
+    await page.reload();
+    expect(await (await vehiclesLoaded).json()).toHaveLength(1);
+    await expect(page).toHaveURL(dashboard);
+    await expect(prompt).toHaveCount(0);
+    await expect(button(page, "Retry car setup")).toHaveCount(0);
+
+    await visit(page, "/app/vehicles");
+    await expect(page.getByRole("heading", { name: "First family car" })).toBeVisible();
+  } finally {
+    await context.close();
+  }
+});
 
 test("My family skips car setup for a visit and clears the prompt immediately after saving", async ({ browser }) => {
   const owner = await account(browser, "vehicle-owner");
@@ -52,7 +85,6 @@ test("My family skips car setup for a visit and clears the prompt immediately af
     await expect(owner.page.getByLabel("Vehicle label", { exact: true })).toHaveValue("Usual car");
 
     const refreshGate = Promise.withResolvers();
-    const availability = "**/rest/v1/rpc/family_has_active_vehicle";
     await owner.page.route(availability, async (route) => {
       await refreshGate.promise;
       await route.continue();

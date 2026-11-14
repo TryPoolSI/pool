@@ -21,11 +21,23 @@ export function FamilyVehicleSetup({
   const { data, isError, isFetching, refetch } = useQuery({
     queryKey,
     queryFn: async ({ signal }) => {
-      const { data, error } = await createClient()
+      const client = createClient();
+      const { data, error } = await client
         .rpc("family_has_active_vehicle", { p_family_id: familyId })
         .abortSignal(signal);
-      if (error) throw new Error("Car setup could not be checked.");
-      return data;
+      if (!error) return data;
+      if (error.code !== "PGRST202") throw error;
+
+      // Before the family-wide check is deployed, RLS only exposes the signed-in guardian's cars.
+      const ownVehicles = await client
+        .from("vehicles")
+        .select("id")
+        .eq("driver_id", userId)
+        .is("retired_at", null)
+        .limit(1)
+        .abortSignal(signal);
+      if (ownVehicles.error) throw ownVehicles.error;
+      return ownVehicles.data.length > 0;
     },
   });
 
