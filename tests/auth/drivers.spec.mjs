@@ -273,7 +273,7 @@ test("M1: independent guardians and proposed-only driver explicitly confirm, con
     await visit(d.page, rideUrl);
     await accept(d.page);
     await expect(
-      d.page.getByText("Awaiting confirmation", { exact: true }),
+      d.page.getByText("Awaiting guardian approval", { exact: true }),
     ).toBeVisible();
     await refresh(b.page);
     const cf = b.page.locator('[role="form"]').filter({
@@ -300,7 +300,7 @@ test("M1: independent guardians and proposed-only driver explicitly confirm, con
     await refresh(a.page);
     await consent(a.page, "Journey A child");
     await expect(
-      a.page.getByText("Awaiting confirmation", { exact: true }),
+      a.page.getByText("Awaiting guardian approval", { exact: true }),
     ).toBeVisible();
     await consent(b.page, "Journey B child");
     for (const person of [a, b, d]) {

@@ -1,10 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
 import * as UI from "@/ui/elements";
 import Link from "@/ui/link";
+import { coverageLabel, type DriverStatus } from "@/lib/drivers";
 import { createClient } from "@/lib/supabase/client";
 import { rideTime, type RideOffer } from "@/lib/rides";
 import { useSession } from "@/services/session";
 import { StatusBadge } from "./presentation";
+import {
+  HomeDriverOffer,
+  type OfferCar,
+  type OfferDetails,
+} from "./home-driver-offer";
 
 const pageSize = 1000;
 const weekInMilliseconds = 7 * 24 * 60 * 60 * 1000;
@@ -12,13 +18,18 @@ const weekInMilliseconds = 7 * 24 * 60 * 60 * 1000;
 type CoverageRide = Pick<
   RideOffer,
   | "id"
+  | "family_id"
   | "circle_id"
   | "pickup_summary"
   | "destination_summary"
   | "starts_at"
   | "timezone"
 >;
-type UncoveredRide = CoverageRide & { awaitingConfirmation: boolean };
+type CoverageStatus = Pick<DriverStatus, "ride_id" | "coverage" | "accepted_at">;
+type UncoveredRide = CoverageRide & {
+  status?: CoverageStatus;
+  offer?: OfferDetails;
+};
 
 async function loadDriverCoverage() {
   const client = createClient();
@@ -48,33 +59,51 @@ async function loadDriverCoverage() {
     if (data.length < pageSize) break;
   }
 
-  const coverageByRide = new Map<string, string>();
+  const coverageByRide = new Map<string, CoverageStatus>();
+  const offersByRide = new Map<string, OfferDetails>();
   const rideIds = [...rides.keys()];
   for (let offset = 0; offset < rideIds.length; offset += pageSize) {
-    const { data, error } = await client
-      .rpc("driver_statuses", {
-        p_ride_ids: rideIds.slice(offset, offset + pageSize),
-      })
-      .select("ride_id,coverage");
+    const ids = { p_ride_ids: rideIds.slice(offset, offset + pageSize) };
+    const [statuses, offers] = await Promise.all([
+      client.rpc("driver_statuses", ids).select("ride_id,coverage,accepted_at"),
+      client.rpc("drive_offer_details", ids),
+    ]);
+    if (statuses.error) throw statuses.error;
+    if (offers.error) throw offers.error;
+    for (const status of statuses.data) coverageByRide.set(status.ride_id, status);
+    for (const offer of offers.data) offersByRide.set(offer.ride_id, offer);
+  }
 
+  let cars: OfferCar[] = [];
+  if (offersByRide.size) {
+    const { data, error } = await client
+      .from("vehicles")
+      .select("id,label,version,passenger_seats")
+      .is("retired_at", null)
+      .order("passenger_seats", { ascending: false })
+      .order("label")
+      .order("id");
     if (error) throw error;
-    for (const status of data)
-      coverageByRide.set(status.ride_id, status.coverage);
+    cars = data;
   }
 
   const ridesByCircle = new Map<string, UncoveredRide[]>();
   for (const ride of rides.values()) {
-    const coverage = coverageByRide.get(ride.id);
-    if (coverage === "confirmed") continue;
+    const status = coverageByRide.get(ride.id);
+    if (status?.coverage === "confirmed") continue;
     const uncovered = {
       ...ride,
-      awaitingConfirmation: coverage === "awaiting_confirmation",
+      status,
+      offer:
+        status?.coverage === "awaiting_confirmation"
+          ? undefined
+          : offersByRide.get(ride.id),
     };
     const circleRides = ridesByCircle.get(ride.circle_id);
     if (circleRides) circleRides.push(uncovered);
     else ridesByCircle.set(ride.circle_id, [uncovered]);
   }
-  return ridesByCircle;
+  return { ridesByCircle, cars };
 }
 
 export function HomeDriverCoverage({
@@ -89,7 +118,7 @@ export function HomeDriverCoverage({
     enabled: Boolean(user) && circles.length > 0,
   });
   const groups = circles.flatMap((circle) => {
-    const rides = coverage.data?.get(circle.id);
+    const rides = coverage.data?.ridesByCircle.get(circle.id);
     return rides ? [{ ...circle, rides }] : [];
   });
 
@@ -122,10 +151,17 @@ export function HomeDriverCoverage({
                     Pickup: {rideTime(ride.starts_at, ride.timezone)}
                   </UI.Paragraph>
                   <StatusBadge tone="attention">
-                    {ride.awaitingConfirmation
-                      ? "Driver not confirmed"
+                    {ride.status?.coverage === "awaiting_confirmation"
+                      ? ride.status.accepted_at
+                        ? coverageLabel(ride.status.coverage, ride.status.accepted_at)
+                        : "Driver not confirmed"
                       : "Needs a driver"}
                   </StatusBadge>
+                  <HomeDriverOffer
+                    details={ride.offer}
+                    familyId={ride.family_id}
+                    cars={coverage.data?.cars ?? []}
+                  />
                 </UI.ListItem>
               ))}
             </UI.List>

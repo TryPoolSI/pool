@@ -1,7 +1,12 @@
 import type { Database } from "./supabase/database.types";
 export type DriverState = { error?: string; message?: string; path?: string };
 export type DriverStatus = Database["public"]["Functions"]["driver_status"]["Returns"][number];
-export const coverageLabel = (coverage?: string) => coverage === "confirmed" ? "Confirmed" : coverage === "awaiting_confirmation" ? "Awaiting confirmation" : "Unassigned — needs a driver";
+export function coverageLabel(coverage?: string, acceptedAt?: string | null) {
+  if (coverage === "confirmed") return "Confirmed";
+  if (coverage === "awaiting_confirmation")
+    return acceptedAt ? "Awaiting guardian approval" : "Awaiting confirmation";
+  return "Unassigned — needs a driver";
+}
 export function driverError(code: string) {
   switch (code) {
     case "PT401": return "Sign in with a confirmed email and try again.";

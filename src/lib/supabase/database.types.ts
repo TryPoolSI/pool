@@ -93,14 +93,14 @@ isOneToOne: false
                   ]
                 },"driver_proposals": {
                   Row: {
-                    "accepted_at": string | null,"available_seats": number | null,"closed_at": string | null,"created_at": string,"deadline": string,"driver_family_id": string,"driver_id": string,"id": string,"mode": string,"nominated_by": string,"nominating_family_id": string,"original_assignment_id": string | null,"original_assignment_revision": number | null,"request_order": number,"restraints_confirmed": boolean,"ride_id": string,"ride_revision": number,"roster": NonNullable<Json>,"status": string,"vehicle_change_from_proposal_id": string | null,"vehicle_id": string,"vehicle_version": number
+                    "accepted_at": string | null,"available_seats": number | null,"closed_at": string | null,"created_at": string,"deadline": string,"driver_family_id": string,"driver_id": string,"id": string,"is_driver_offer": boolean,"mode": string,"nominated_by": string,"nominating_family_id": string,"original_assignment_id": string | null,"original_assignment_revision": number | null,"request_order": number,"restraints_confirmed": boolean,"ride_id": string,"ride_revision": number,"roster": NonNullable<Json>,"status": string,"vehicle_change_from_proposal_id": string | null,"vehicle_id": string,"vehicle_version": number
                   }
                   ComputedFields: never
                   Insert: {
-                    "accepted_at"?: string | null,"available_seats"?: number | null,"closed_at"?: string | null,"created_at"?: string,"deadline": string,"driver_family_id": string,"driver_id": string,"id": string,"mode"?: string,"nominated_by": string,"nominating_family_id": string,"original_assignment_id"?: string | null,"original_assignment_revision"?: number | null,"request_order"?: never,"restraints_confirmed"?: boolean,"ride_id": string,"ride_revision": number,"roster": NonNullable<Json>,"status"?: string,"vehicle_change_from_proposal_id"?: string | null,"vehicle_id": string,"vehicle_version": number
+                    "accepted_at"?: string | null,"available_seats"?: number | null,"closed_at"?: string | null,"created_at"?: string,"deadline": string,"driver_family_id": string,"driver_id": string,"id": string,"is_driver_offer"?: boolean,"mode"?: string,"nominated_by": string,"nominating_family_id": string,"original_assignment_id"?: string | null,"original_assignment_revision"?: number | null,"request_order"?: never,"restraints_confirmed"?: boolean,"ride_id": string,"ride_revision": number,"roster": NonNullable<Json>,"status"?: string,"vehicle_change_from_proposal_id"?: string | null,"vehicle_id": string,"vehicle_version": number
                   }
                   Update: {
-                    "accepted_at"?: string | null,"available_seats"?: number | null,"closed_at"?: string | null,"created_at"?: string,"deadline"?: string,"driver_family_id"?: string,"driver_id"?: string,"id"?: string,"mode"?: string,"nominated_by"?: string,"nominating_family_id"?: string,"original_assignment_id"?: string | null,"original_assignment_revision"?: number | null,"request_order"?: never,"restraints_confirmed"?: boolean,"ride_id"?: string,"ride_revision"?: number,"roster"?: NonNullable<Json>,"status"?: string,"vehicle_change_from_proposal_id"?: string | null,"vehicle_id"?: string,"vehicle_version"?: number
+                    "accepted_at"?: string | null,"available_seats"?: number | null,"closed_at"?: string | null,"created_at"?: string,"deadline"?: string,"driver_family_id"?: string,"driver_id"?: string,"id"?: string,"is_driver_offer"?: boolean,"mode"?: string,"nominated_by"?: string,"nominating_family_id"?: string,"original_assignment_id"?: string | null,"original_assignment_revision"?: number | null,"request_order"?: never,"restraints_confirmed"?: boolean,"ride_id"?: string,"ride_revision"?: number,"roster"?: NonNullable<Json>,"status"?: string,"vehicle_change_from_proposal_id"?: string | null,"vehicle_id"?: string,"vehicle_version"?: number
                   }
                   Relationships: [
                     {
@@ -598,6 +598,11 @@ isOneToOne: false
 "designate_recipient":
 { Args: { "p_child_id": string,"p_recipient_id": string,"p_revision": number,"p_ride_id": string,"p_version": number }; Returns: number
                            },
+"drive_offer_details":
+{ Args: { "p_ride_ids": (string)[] }; Returns: {
+              "booster_count": number,"child_seat_count": number,"ride_id": string,"ride_revision": number,"rider_count": number
+            }[]
+                           },
 "driver_inbox":
 { Args: { "p_after_id"?: string,"p_after_start"?: string,"p_limit"?: number,"p_pending_only"?: boolean }; Returns: {
               "accepted_at": string,"available_seats": number,"booster_count": number,"cancelled_at": string,"child_seat_count": number,"consent_count": number,"coverage": string,"current_assignment_id": string,"current_assignment_release_reason": string,"current_assignment_revision": number,"current_driver_name": string,"current_proposal_id": string,"current_proposal_revision": number,"deadline": string,"destination_summary": string,"driver_id": string,"driver_name": string,"ends_at": string,"is_completed_driver": boolean,"is_current_driver": boolean,"is_driver": boolean,"mode": string,"passenger_seats": number,"pickup_summary": string,"proposal_id": string,"proposal_status": string,"restraints_confirmed": boolean,"ride_id": string,"ride_revision": number,"rider_count": number,"starts_at": string,"timezone": string,"vehicle_id": string,"vehicle_label": string,"vehicle_version": number
@@ -630,6 +635,9 @@ isOneToOne: false
 { Args: { "p_kind": string,"p_scope_id": string }; Returns: {
               "consumed_at": string,"created_at": string,"email": string,"expires_at": string,"id": string,"revoked_at": string
             }[]
+                           },
+"offer_to_drive":
+{ Args: { "p_available_seats": number,"p_family_id": string,"p_id": string,"p_restraints": boolean,"p_revision": number,"p_ride_id": string,"p_vehicle_id": string,"p_vehicle_version": number }; Returns: string
                            },
 "propose_driver":
 { Args: { "p_driver_family_id": string,"p_driver_id": string,"p_family_id": string,"p_id": string,"p_revision": number,"p_ride_id": string,"p_vehicle_id": string,"p_vehicle_version": number }; Returns: string

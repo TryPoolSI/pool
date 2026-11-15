@@ -42,7 +42,10 @@ async function executeDriver(
     const client = await createClient();
     if (!(await verifiedUser(client))) return { error: driverError("PT401") };
     const command = requiredText(data, "command");
-    let result: { data: unknown; error: { code: string } | null };
+    let result: {
+      data: unknown;
+      error: { code: string; message: string } | null;
+    };
     let path: string | undefined;
     let savedVehicle: SavedVehicle | undefined;
     if (command === "saveVehicle") {
@@ -77,6 +80,40 @@ async function executeDriver(
         p_vehicle_version: integer(selected, "vehicle_version", 1),
       });
       path = `/app/rides/${ride}`;
+    } else if (command === "offerToDrive") {
+      const ride = uuid(data, "ride_id");
+      result = await client.rpc("offer_to_drive", {
+        p_id: uuid(data, "request_id"),
+        p_ride_id: ride,
+        p_family_id: uuid(data, "family_id"),
+        p_revision: integer(data, "revision", 1),
+        p_vehicle_id: uuid(data, "vehicle_id"),
+        p_vehicle_version: integer(data, "vehicle_version", 1),
+        p_available_seats: integer(data, "available_seats", 1, 50),
+        p_restraints: data.get("restraints") === "yes",
+      });
+      if (result.error?.message === "already_assigned_or_pending") {
+        return {
+          error: "A driver proposal or assignment is already in place. Open the ride to see the latest coverage.",
+        };
+      }
+      if (
+        result.error?.message === "insufficient_seats" ||
+        result.error?.message === "capacity_or_restraints"
+      ) {
+        return {
+          error: "Offer a seat for every rider, stay within your car’s capacity, and confirm the required restraints.",
+        };
+      }
+      if (result.error?.message === "driver_unavailable") {
+        return {
+          error: "You have an overlapping assignment or a trip still in progress.",
+        };
+      }
+      if (!result.error) {
+        revalidatePath();
+        return { path: `/app/rides/${ride}` };
+      }
     } else if (
       command === "proposeDriver" ||
       command === "requestReplacement"

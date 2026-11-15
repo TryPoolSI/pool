@@ -390,7 +390,7 @@ test("R7 real adults preserve optional swaps, reset unavailable consent and pers
     await expect(independent).toHaveURL(/\/app$/);
     await visit(independent, ride);
     await expect(
-      independent.getByText("Awaiting confirmation", { exact: true }),
+      independent.getByText("Awaiting guardian approval", { exact: true }),
     ).toBeVisible();
     await expect(
       independent.getByText("There is no confirmed driver.", { exact: false }),
