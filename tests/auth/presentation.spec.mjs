@@ -84,6 +84,29 @@ test("R8 shared layouts retain desktop composition, mobile navigation, keyboard 
     await captureState(page, "schedule");
     await page.setViewportSize({ width: 320, height: 844 });
     const phoneNav = page.getByRole("navigation", { name: "Phone navigation" });
+    const tabs = await phoneNav.getByRole("link").evaluateAll((links) =>
+      links.map((link) => {
+        const { width, height } = link.getBoundingClientRect();
+        return { width, height };
+      }),
+    );
+    expect(tabs).toHaveLength(4);
+    expect(tabs.every(({ width, height }) => width >= 44 && height >= 44)).toBe(
+      true,
+    );
+    const tabWidths = tabs.map(({ width }) => width);
+    expect(Math.max(...tabWidths) - Math.min(...tabWidths)).toBeLessThan(1);
+    const weekNavigation = page.getByRole("navigation", {
+      name: "Schedule weeks",
+    });
+    const previous = await weekNavigation
+      .getByRole("link", { name: "Previous week", exact: true })
+      .boundingBox();
+    const next = await weekNavigation
+      .getByRole("link", { name: "Next week", exact: true })
+      .boundingBox();
+    expect(next.y).toBeCloseTo(previous.y, 0);
+    await accessible(page);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/app/profile");
     await page.getByRole("button", { name: "Create a family", exact: true }).click();
@@ -166,6 +189,11 @@ test("R8 shared layouts retain desktop composition, mobile navigation, keyboard 
       name: "Application",
       exact: true,
     });
+    const iconOffsets = await sidebar.locator("a svg").evaluateAll((icons) =>
+      icons.map((icon) => icon.getBoundingClientRect().left),
+    );
+    expect(iconOffsets).toHaveLength(4);
+    expect(new Set(iconOffsets).size).toBe(1);
     const newTab = page.context().waitForEvent("page");
     await sidebar
       .getByRole("link", { name: "Schedule", exact: true })

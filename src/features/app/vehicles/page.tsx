@@ -1,8 +1,14 @@
 import * as UI from "@/ui/elements";
 import { createScreen } from "@/ui/remote";
 import { PageHeading, ActionDialog, Icon } from "../presentation";
+import { styles } from "@/ui/styles";
 import { createClient } from "@/lib/supabase/client";
-import { AddVehicleForm, DriverForm, VehicleFields, Confirmation } from "../driver-form";
+import {
+  AddVehicleForm,
+  DriverForm,
+  VehicleFields,
+  Confirmation,
+} from "../driver-form";
 async function loadVehicles() {
   const client = await createClient();
   const [vehicles, profiles] = await Promise.all([
@@ -35,13 +41,15 @@ const Vehicles = createScreen(loadVehicles, ({ vehicles, profile }) => (
           {vehicles.data.length ? (
             vehicles.data.map((v) => (
               <UI.Section className="person-card" key={v.id}>
-                <UI.Inline className="team-icon">
-                  <Icon name="car" />
-                </UI.Inline>
-                <UI.Heading2>
-                  {v.label}
-                  {v.retired_at ? " (retired)" : ""}
-                </UI.Heading2>
+                <UI.Box style={styles.row}>
+                  <UI.Box className="team-icon">
+                    <Icon name="car" />
+                  </UI.Box>
+                  <UI.Heading2 style={{ marginBottom: 0 }}>
+                    {v.label}
+                    {v.retired_at ? " (retired)" : ""}
+                  </UI.Heading2>
+                </UI.Box>
                 <UI.Paragraph>{v.passenger_seats} passenger seats</UI.Paragraph>
                 <ActionDialog
                   title={v.retired_at ? "Restore vehicle" : "Edit vehicle"}

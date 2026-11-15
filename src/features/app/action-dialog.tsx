@@ -9,8 +9,11 @@ import {
   useWindowDimensions,
   KeyboardAvoidingView,
   Platform,
+  type StyleProp,
+  type ViewStyle,
 } from "react-native";
-import { colors, styles } from "@/ui/styles";
+import { Icon } from "@/ui/icon";
+import { colors, spacing, styles } from "@/ui/styles";
 import { captureFocus, modalFocus } from "@/ui/platform";
 export function ActionDialog({
   title,
@@ -19,6 +22,7 @@ export function ActionDialog({
   initialOpen = false,
   tone = "secondary",
   triggerLabel,
+  triggerStyle,
 }: {
   title: string;
   children: ReactNode;
@@ -26,6 +30,7 @@ export function ActionDialog({
   initialOpen?: boolean;
   tone?: "primary" | "secondary";
   triggerLabel?: string;
+  triggerStyle?: StyleProp<ViewStyle>;
 }) {
   const pathname = usePathname(),
     previousPath = useRef(pathname);
@@ -33,6 +38,7 @@ export function ActionDialog({
   const [open, setOpen] = useState(initialOpen);
   const [startedInline] = useState(inline);
   const { width } = useWindowDimensions();
+  const inset = width <= 650 ? spacing.lg : spacing.xl;
   const id = useId();
   const [restore, setRestore] = useState<() => void>(() => () => {});
   const focusCleanup = useRef<() => void>(() => {});
@@ -52,9 +58,7 @@ export function ActionDialog({
   }
   if (inline || startedInline) return <View>{children}</View>;
   return (
-    <View
-      style={{ alignSelf: "flex-start", marginVertical: 8, maxWidth: "100%" }}
-    >
+    <>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={triggerLabel ?? title}
@@ -66,29 +70,29 @@ export function ActionDialog({
         }}
         style={[
           styles.button,
+          { marginVertical: spacing.sm },
           tone === "primary" ? styles.primary : undefined,
           title === "Account"
-            ? { borderRadius: 24, paddingHorizontal: 12 }
+            ? { borderRadius: 24, paddingHorizontal: spacing.md }
             : undefined,
-          triggerLabel === "Menu"
-            ? {
-                width: 44,
-                paddingHorizontal: 0,
-                borderWidth: 0,
-                backgroundColor: "transparent",
-              }
-            : undefined,
+          triggerLabel === "Menu" && styles.iconButton,
+          triggerLabel === "Menu" && styles.plainIconButton,
+          triggerStyle,
         ]}
       >
-        <Text
-          style={[
-            styles.text,
-            styles.buttonText,
-            tone === "primary" ? styles.primaryText : undefined,
-          ]}
-        >
-          {triggerLabel === "Menu" ? "☰" : (triggerLabel ?? title)}
-        </Text>
+        {triggerLabel === "Menu" ? (
+          <Icon name="menu" />
+        ) : (
+          <Text
+            style={[
+              styles.text,
+              styles.buttonText,
+              tone === "primary" ? styles.primaryText : undefined,
+            ]}
+          >
+            {triggerLabel ?? title}
+          </Text>
+        )}
       </Pressable>
       <Modal
         visible={open}
@@ -107,7 +111,7 @@ export function ActionDialog({
             backgroundColor: "#152e2566",
             justifyContent: "center",
             alignItems: "center",
-            padding: width <= 650 ? 10 : 24,
+            padding: width <= 650 ? spacing.md : spacing.xxl,
           }}
         >
           <View
@@ -129,13 +133,14 @@ export function ActionDialog({
           >
             <View
               style={{
-                padding: 22,
+                paddingHorizontal: inset,
+                paddingVertical: spacing.md,
                 borderBottomWidth: 1,
                 borderColor: colors.line,
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "space-between",
-                gap: 16,
+                gap: spacing.md,
               }}
             >
               <Text
@@ -149,36 +154,40 @@ export function ActionDialog({
                 accessibilityRole="button"
                 accessibilityLabel={`Close ${title}`}
                 onPress={close}
-                style={[styles.button, { width: 44, padding: 0 }]}
+                style={[
+                  styles.button,
+                  styles.iconButton,
+                  { alignSelf: "center" },
+                ]}
               >
-                <Text style={styles.text}>×</Text>
+                <Icon name="close" size={18} />
               </Pressable>
             </View>
             <ScrollView
               keyboardShouldPersistTaps="handled"
-              contentContainerStyle={{ padding: width <= 650 ? 18 : 25 }}
+              contentContainerStyle={{ padding: inset }}
             >
               {children}
             </ScrollView>
             <View
               style={{
-                padding: 15,
+                paddingHorizontal: inset,
+                paddingVertical: spacing.md,
                 borderTopWidth: 1,
                 borderColor: colors.line,
-                alignItems: "flex-end",
               }}
             >
               <Pressable
                 accessibilityRole="button"
                 onPress={close}
-                style={styles.button}
+                style={[styles.button, { alignSelf: "flex-end" }]}
               >
-                <Text style={styles.text}>Done</Text>
+                <Text style={[styles.text, styles.buttonText]}>Done</Text>
               </Pressable>
             </View>
           </View>
         </KeyboardAvoidingView>
       </Modal>
-    </View>
+    </>
   );
 }

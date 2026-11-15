@@ -14,6 +14,9 @@ export const colors = {
   danger: "#952c22",
   outline: "#718477",
 };
+export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24 };
+export const controlHeight = 44;
+export const fieldHeight = 46;
 const border = { borderWidth: 1, borderColor: colors.line };
 export const styles = StyleSheet.create({
   text: {
@@ -55,11 +58,17 @@ export const styles = StyleSheet.create({
     ...border,
     backgroundColor: colors.surface,
     borderRadius: 15,
-    padding: 25,
-    marginVertical: 16,
+    padding: spacing.xxl,
+    marginVertical: spacing.lg,
     minWidth: 0,
   },
-  row: { flexDirection: "row", alignItems: "center", gap: 11 },
+  row: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  actionRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -70,18 +79,25 @@ export const styles = StyleSheet.create({
   gridChild: { flexBasis: "47%", flexGrow: 1, minWidth: 0, marginVertical: 0 },
   button: {
     ...border,
-    minHeight: 44,
+    minHeight: controlHeight,
     borderRadius: 9,
-    paddingVertical: 11,
-    paddingHorizontal: 17,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.lg,
     backgroundColor: colors.surface,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
-    gap: 9,
+    gap: spacing.sm,
     alignSelf: "flex-start",
     maxWidth: "100%",
   },
+  iconButton: {
+    width: controlHeight,
+    height: controlHeight,
+    flexShrink: 0,
+    padding: 0,
+  },
+  plainIconButton: { borderWidth: 0, backgroundColor: "transparent" },
   buttonText: {
     fontSize: 14,
     lineHeight: 21,
@@ -94,16 +110,16 @@ export const styles = StyleSheet.create({
     color: colors.green,
     fontSize: 14,
     lineHeight: 22,
-    minHeight: 44,
+    minHeight: controlHeight,
     paddingVertical: 11,
   },
   field: {
     ...border,
     borderColor: colors.outline,
     borderRadius: 8,
-    paddingVertical: 11,
-    paddingHorizontal: 12,
-    minHeight: 46,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.md,
+    minHeight: fieldHeight,
     fontFamily: "DM Sans",
     fontSize: 16,
     lineHeight: 23,
@@ -112,7 +128,7 @@ export const styles = StyleSheet.create({
     minWidth: 0,
     width: "100%",
   },
-  label: { gap: 7, minWidth: 0 },
+  label: { gap: spacing.sm, minWidth: 0 },
   labelText: {
     fontSize: 13,
     lineHeight: 20,
@@ -124,7 +140,7 @@ export const styles = StyleSheet.create({
     alignItems: "flex-start",
     gap: 12,
     padding: 12,
-    minHeight: 44,
+    minHeight: controlHeight,
     backgroundColor: colors.soft,
     borderRadius: 10,
   },
@@ -137,8 +153,13 @@ export const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  form: { gap: 16, marginVertical: 20, maxWidth: 760, width: "100%" },
-  fieldset: { gap: 19, minWidth: 0 },
+  form: {
+    gap: spacing.lg,
+    marginVertical: spacing.lg,
+    maxWidth: 760,
+    width: "100%",
+  },
+  fieldset: { gap: spacing.lg, minWidth: 0 },
   alert: {
     color: colors.danger,
     backgroundColor: "#fff1ee",
@@ -154,14 +175,20 @@ export const styles = StyleSheet.create({
     color: colors.green,
     borderRadius: 9,
   },
-  list: { gap: 0, marginVertical: 16 },
+  list: { marginVertical: spacing.lg },
   li: {
     paddingVertical: 17,
     borderBottomWidth: 1,
     borderBottomColor: colors.line,
     minWidth: 0,
   },
-  nav: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginVertical: 18 },
+  nav: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    columnGap: spacing.md,
+    rowGap: spacing.xs,
+    marginVertical: spacing.md,
+  },
   disabled: { opacity: 0.6 },
 });
 type Rule = {
@@ -172,10 +199,10 @@ const classes: Record<string, Rule> = {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 24,
-    marginBottom: 30,
+    gap: spacing.xl,
+    marginBottom: spacing.xxl,
   },
-  "page-description": { marginTop: 11, marginBottom: 0, fontSize: 15 },
+  "page-description": { marginTop: spacing.sm, marginBottom: 0, fontSize: 15 },
   eyebrow: {
     color: colors.muted,
     fontSize: 12,
@@ -229,6 +256,7 @@ const classes: Record<string, Rule> = {
     backgroundColor: colors.lime,
     alignItems: "center",
     justifyContent: "center",
+    flexShrink: 0,
   },
   avatar: {
     width: 40,
@@ -250,10 +278,11 @@ const classes: Record<string, Rule> = {
   "text-link": {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    minHeight: 44,
+    gap: spacing.sm,
+    minHeight: controlHeight,
     fontSize: 14,
     fontWeight: "600",
+    color: colors.green,
   },
   notice: {
     ...border,
@@ -268,8 +297,8 @@ const classes: Record<string, Rule> = {
   positive: { backgroundColor: colors.soft, color: colors.green },
   neutral: { backgroundColor: colors.sidebar, color: colors.muted },
   "empty-state": {
-    paddingVertical: 35,
-    paddingHorizontal: 20,
+    paddingVertical: spacing.xxl,
+    gap: spacing.sm,
     alignItems: "center",
   },
   "empty-symbol": {
@@ -280,7 +309,6 @@ const classes: Record<string, Rule> = {
     fontSize: 24,
     lineHeight: 48,
     textAlign: "center",
-    marginBottom: 12,
   },
   "status-badge": {
     alignSelf: "flex-start",
@@ -293,20 +321,29 @@ const classes: Record<string, Rule> = {
     lineHeight: 19,
     fontWeight: "700",
   },
-  "route-summary": { gap: 13, marginTop: 22, marginBottom: 17 },
+  "route-summary": { gap: spacing.sm, marginVertical: spacing.lg },
   "ride-list": {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 18,
-    marginTop: 20,
+    gap: spacing.lg,
+    marginTop: spacing.lg,
     marginBottom: 30,
   },
   "ride-card-top": {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 12,
+    gap: spacing.md,
     flexWrap: "wrap",
   },
+  "ride-card-heading": {
+    ...styles.row,
+    alignItems: "flex-start",
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 220,
+    minWidth: 0,
+  },
+  "ride-card-times": { flex: 1, gap: spacing.xs, color: colors.muted },
   "ride-date": {
     ...border,
     width: 43,
@@ -318,27 +355,29 @@ const classes: Record<string, Rule> = {
   "ride-card-bottom": {
     flexDirection: "row",
     alignItems: "center",
-    gap: 9,
+    flexWrap: "wrap",
+    gap: spacing.sm,
     borderTopWidth: 1,
     borderTopColor: colors.line,
-    paddingVertical: 10,
+    paddingTop: spacing.sm,
     marginTop: "auto",
-    minHeight: 64,
   },
-  "ride-card-note": { paddingBottom: 12, fontSize: 12 },
+  "ride-card-driver": {
+    ...styles.row,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 144,
+  },
+  "ride-card-note": { marginBottom: spacing.md, fontSize: 12 },
   "week-navigation": {
-    flexDirection: "row",
+    ...styles.actionRow,
     justifyContent: "space-between",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: 12,
-    marginVertical: 20,
   },
   "week-strip": {
     flexDirection: "row",
     gap: 10,
     marginTop: 24,
-    marginBottom: 30,
+    marginBottom: spacing.md,
   },
   "week-day": {
     ...border,
@@ -390,8 +429,9 @@ const classes: Record<string, Rule> = {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 15,
-    marginBottom: 19,
+    flexWrap: "wrap",
+    gap: spacing.md,
+    marginBottom: spacing.lg,
   },
   number: {
     backgroundColor: colors.lime,
@@ -409,6 +449,12 @@ const classes: Record<string, Rule> = {
     backgroundColor: colors.amberBg,
     color: colors.amber,
     flexShrink: 0,
+  },
+  "task-summary": {
+    ...styles.row,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 180,
   },
   "journey-list": {
     flexDirection: "row",
@@ -462,6 +508,8 @@ export function classStyle(names = "", width = 390, parent = ""): Rule {
   for (const name of names.split(/\s+/)) Object.assign(result, classes[name]);
   const mobile = width <= 650,
     columns = width > 900;
+  if (mobile && /\b(panel|person-card)\b/.test(names))
+    result.padding = spacing.lg;
   if (
     /(dashboard-grid|people-grid|setup-cards|ride-list|journey-list|form-pair|ride-overview)/.test(
       names,
@@ -477,7 +525,11 @@ export function classStyle(names = "", width = 390, parent = ""): Rule {
   if (/ride-list|journey-list/.test(parent))
     Object.assign(
       result,
-      { ...styles.panel, marginVertical: 0, padding: 20 },
+      {
+        ...styles.panel,
+        marginVertical: 0,
+        padding: mobile ? spacing.lg : spacing.xl,
+      },
       columns ? styles.gridChild : { width: "100%" },
     );
   if (parent.includes("ride-overview"))
@@ -498,24 +550,18 @@ export function classStyle(names = "", width = 390, parent = ""): Rule {
   if (parent === "route-summary")
     Object.assign(result, {
       flexDirection: "row",
-      gap: 8,
-      alignItems: "flex-start",
+      gap: spacing.sm,
+      alignItems: "baseline",
     });
-  if (
-    parent === "ride-card-top" &&
-    !names.includes("ride-date") &&
-    !names.includes("status-badge")
-  )
-    Object.assign(result, { flex: 1, minWidth: 120 });
   if (parent === "task-list")
     Object.assign(result, {
       ...styles.panel,
       flexDirection: "row",
       alignItems: "center",
-      gap: 15,
+      gap: spacing.md,
       flexWrap: "wrap",
-      padding: mobile ? 16 : 20,
-      marginTop: 10,
+      padding: mobile ? spacing.lg : spacing.xl,
+      marginTop: spacing.md,
       marginBottom: 0,
     });
   if (parent === "activity-list")
@@ -527,12 +573,17 @@ export function classStyle(names = "", width = 390, parent = ""): Rule {
   if (parent.includes("week-day") && parent.includes("today"))
     result.color = "white";
   if (mobile) {
+    if (names === "week-navigation")
+      Object.assign(result, {
+        flexDirection: "column",
+        alignItems: "flex-start",
+      });
     if (names === "page-heading")
       Object.assign(result, {
         flexDirection: "column",
         alignItems: "flex-start",
-        gap: 12,
-        marginBottom: 23,
+        gap: spacing.md,
+        marginBottom: spacing.xl,
       });
     if (names === "week-strip") result.gap = 4;
     if (names.includes("week-day"))

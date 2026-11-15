@@ -1,7 +1,8 @@
 import * as UI from "@/ui/elements";
 import { createScreen } from "@/ui/remote";
 import Link from "@/ui/link";
-import { PageHeading, EmptyState, ActionDialog } from "../presentation";
+import { PageHeading, EmptyState, ActionDialog, Icon } from "../presentation";
+import { colors, spacing, styles } from "@/ui/styles";
 import { createClient } from "@/lib/supabase/client";
 import { addDays, dateInZone, validTimezone, weekRange } from "@/lib/rides";
 import { RideList } from "../ride-list";
@@ -55,7 +56,8 @@ const Schedule = createScreen(
         title="Schedule"
         action={
           <Link className="button primary" href="/app/rides/new">
-            ＋ Plan a ride
+            <Icon name="plus" size={16} color="white" />
+            Plan a ride
           </Link>
         }
       >
@@ -68,9 +70,28 @@ const Schedule = createScreen(
         }).format(new Date(`${range.monday}T12:00:00Z`))}{" "}
         · {zone}
       </PageHeading>
-      <UI.Nav className="week-navigation" aria-label="Schedule weeks">
-        <Link href={weekLink(addDays(range.monday, -7))}>← Previous week</Link>
-        <ActionDialog title="Choose week or timezone">
+      <UI.Box
+        className="week-navigation"
+        role="navigation"
+        aria-label="Schedule weeks"
+      >
+        <UI.Box style={[styles.actionRow, { columnGap: spacing.lg }]}>
+          <Link
+            className="text-link"
+            href={weekLink(addDays(range.monday, -7))}
+          >
+            <Icon name="arrow-left" size={16} color={colors.green} />
+            Previous week
+          </Link>
+          <Link className="text-link" href={weekLink(range.next)}>
+            Next week
+            <Icon name="arrow-right" size={16} color={colors.green} />
+          </Link>
+        </UI.Box>
+        <ActionDialog
+          title="Choose week or timezone"
+          triggerStyle={{ marginVertical: 0, alignSelf: "auto" }}
+        >
           <UI.Form className="auth-form week-filter">
             <UI.Fieldset>
               <UI.Label>
@@ -95,8 +116,7 @@ const Schedule = createScreen(
             </UI.Fieldset>
           </UI.Form>
         </ActionDialog>
-        <Link href={weekLink(range.next)}>Next week →</Link>
-      </UI.Nav>
+      </UI.Box>
       <UI.Box className="week-strip" role="group" aria-label="Full week">
         {Array.from({ length: 7 }, (_, index) => {
           const date = addDays(range.monday, index);

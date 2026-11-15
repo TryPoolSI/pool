@@ -1,8 +1,15 @@
 import { TypographyScale } from "./elements";
 import { SkipLink } from "./web-accessibility";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 import {
   ScrollView,
+  StyleSheet,
   View,
   Text,
   Pressable,
@@ -19,19 +26,25 @@ import { createClient } from "@/lib/supabase/client";
 import { useSession } from "@/services/session";
 import { familyPath, useActiveFamily } from "@/services/active-family";
 import { queryClient } from "@/services/cache";
-import { Brand, Icon, Avatar } from "@/features/app/presentation";
+import { Brand, Avatar } from "@/features/app/presentation";
 import { AuthForm } from "@/features/auth/auth-form";
 import { ActionDialog } from "@/features/app/action-dialog";
 import Link from "./link";
-import { colors, styles } from "./styles";
+import { Icon } from "./icon";
+import { colors, spacing, styles } from "./styles";
 const homePath = "/app";
-const destinations = [
+type Destination = readonly [
+  href: string,
+  label: string,
+  icon: ComponentProps<typeof Icon>["name"],
+];
+const destinations: Destination[] = [
   [homePath, "Home", "home"],
   ["/app/attention", "Today", "check"],
   ["/app/schedule", "Schedule", "calendar"],
   ["/app/driving", "Driving", "activity"],
 ];
-const setup = [
+const setup: Destination[] = [
   ["/app/profile", "Profile", "users"],
   ["/app/vehicles", "Vehicles", "car"],
   ["/app/invitations", "Invitations", "shield"],
@@ -43,48 +56,71 @@ function ApplicationHomeLink({ compact = false }: { compact?: boolean }) {
     </Link>
   );
 }
+const shellStyles = StyleSheet.create({
+  navigationItem: {
+    justifyContent: "flex-start",
+    paddingHorizontal: spacing.md,
+  },
+  mobileTab: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 52,
+    flexDirection: "column",
+    justifyContent: "center",
+    gap: spacing.xs,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.xs,
+  },
+  navigationLabel: { fontSize: 14, lineHeight: 20 },
+  mobileTabLabel: { fontSize: 12, lineHeight: 16, textAlign: "center" },
+  headerAction: { alignSelf: "center", marginVertical: 0 },
+});
+function NavigationItem({
+  destination: [href, label, icon],
+  current,
+  mobile = false,
+}: {
+  destination: Destination;
+  current: boolean;
+  mobile?: boolean;
+}) {
+  const color = current ? colors.green : colors.muted;
+  return (
+    <Link
+      href={href}
+      aria-current={current ? "page" : undefined}
+      className="button plain"
+      style={mobile ? shellStyles.mobileTab : shellStyles.navigationItem}
+    >
+      <Icon name={icon} color={color} />
+      <Text
+        style={[
+          styles.text,
+          mobile ? shellStyles.mobileTabLabel : shellStyles.navigationLabel,
+          { color, fontWeight: current ? "700" : "400" },
+        ]}
+      >
+        {label}
+      </Text>
+    </Link>
+  );
+}
 function NavigationLinks({ mobile = false }: { mobile?: boolean }) {
   const pathname = usePathname();
   return (
     <View
       role="navigation"
       accessibilityLabel={mobile ? "Phone navigation" : "Application"}
-      style={{ flexDirection: mobile ? "row" : "column", gap: 7 }}
+      style={{ flexDirection: mobile ? "row" : "column", gap: spacing.xs }}
     >
-      {destinations.map(([href, label, icon]) => {
-        const current = pathname === href;
-        return (
-          <Link
-            key={href}
-            href={href}
-            aria-current={current ? "page" : undefined}
-            className={mobile ? "button plain mobile-tab" : "button plain"}
-          >
-            <View
-              style={{
-                flexDirection: mobile ? "column" : "row",
-                alignItems: "center",
-                gap: mobile ? 4 : 13,
-                minWidth: 0,
-              }}
-            >
-              <Icon name={icon} />
-              <Text
-                style={[
-                  styles.text,
-                  {
-                    fontSize: mobile ? 12 : 14,
-                    color: current ? colors.green : colors.muted,
-                    fontWeight: current ? "700" : "400",
-                  },
-                ]}
-              >
-                {label}
-              </Text>
-            </View>
-          </Link>
-        );
-      })}
+      {destinations.map((destination) => (
+        <NavigationItem
+          key={destination[0]}
+          destination={destination}
+          current={pathname === destination[0]}
+          mobile={mobile}
+        />
+      ))}
     </View>
   );
 }
@@ -123,7 +159,8 @@ export function ApplicationShell({ children }: { children: ReactNode }) {
     },
   });
   const sidebar = width > 1200 ? 232 : width > 900 ? 205 : 190;
-  const myFamily = family
+  const contentInset = mobile ? spacing.lg : width <= 1200 ? spacing.xxl : 40;
+  const myFamily: Destination | undefined = family
     ? [familyPath(family.id), "My family", "users"]
     : undefined;
   const setupDestinations = myFamily ? [myFamily, ...setup] : setup;
@@ -135,34 +172,18 @@ export function ApplicationShell({ children }: { children: ReactNode }) {
   const setupLinks = (
     <View
       style={{
-        gap: 7,
-        marginTop: 24,
-        paddingTop: 18,
+        gap: spacing.xs,
+        paddingTop: spacing.md,
         borderTopWidth: 1,
         borderColor: colors.line,
       }}
     >
-      {setupDestinations.map(([href, label, icon]) => (
-        <Link
-          key={href}
-          href={href}
-          className="button plain"
-          aria-current={pathname === href ? "page" : undefined}
-        >
-          <Icon name={icon} />
-          <Text
-            style={[
-              styles.text,
-              {
-                fontSize: 14,
-                color: pathname === href ? colors.green : colors.muted,
-                fontWeight: pathname === href ? "700" : "400",
-              },
-            ]}
-          >
-            {label}
-          </Text>
-        </Link>
+      {setupDestinations.map((destination) => (
+        <NavigationItem
+          key={destination[0]}
+          destination={destination}
+          current={pathname === destination[0]}
+        />
       ))}
     </View>
   );
@@ -187,29 +208,28 @@ export function ApplicationShell({ children }: { children: ReactNode }) {
             }}
             contentContainerStyle={{
               paddingVertical: 32,
-              paddingHorizontal: 22,
-              gap: 22,
+              paddingHorizontal: spacing.xl,
+              gap: spacing.xl,
               flexGrow: 1,
             }}
           >
             <ApplicationHomeLink />
             <View
               style={{
-                padding: 14,
+                padding: spacing.md,
                 borderWidth: 1,
                 borderColor: colors.line,
                 borderRadius: 12,
               }}
             >
-              <View
-                style={{ flexDirection: "row", gap: 11, alignItems: "center" }}
-              >
+              <View style={styles.row}>
                 <View
                   style={{
                     backgroundColor: colors.lime,
                     borderRadius: 18,
                     width: 36,
                     height: 36,
+                    flexShrink: 0,
                     alignItems: "center",
                     justifyContent: "center",
                   }}
@@ -245,20 +265,23 @@ export function ApplicationShell({ children }: { children: ReactNode }) {
             >
               A little coordination.{"\n"}A lot of peace of mind.
             </Text>
-            <Link href="/app/rides/new">＋ Plan a ride</Link>
+            <Link href="/app/rides/new" className="text-link">
+              <Icon name="plus" size={16} color={colors.green} />
+              Plan a ride
+            </Link>
           </ScrollView>
         )}
         <View style={{ flex: 1, minWidth: 0 }}>
           <View
             style={{
-              minHeight: mobile ? 70 : 85,
-              paddingHorizontal: mobile ? 18 : 40,
+              minHeight: mobile ? 64 : 76,
+              paddingHorizontal: contentInset,
               borderBottomWidth: 1,
               borderColor: colors.line,
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "space-between",
-              gap: 10,
+              gap: mobile ? spacing.xs : spacing.md,
             }}
           >
             {Platform.OS !== "web" &&
@@ -273,15 +296,12 @@ export function ApplicationShell({ children }: { children: ReactNode }) {
                   }
                   style={[
                     styles.button,
-                    {
-                      width: 44,
-                      padding: 0,
-                      borderWidth: 0,
-                      backgroundColor: "transparent",
-                    },
+                    styles.iconButton,
+                    styles.plainIconButton,
+                    shellStyles.headerAction,
                   ]}
                 >
-                  <Text style={[styles.text, { fontSize: 26 }]}>‹</Text>
+                  <Icon name="chevron-left" />
                 </Pressable>
               )}
             {mobile ? (
@@ -304,15 +324,27 @@ export function ApplicationShell({ children }: { children: ReactNode }) {
                 {context.data?.name ?? "Your account"}
               </Text>
             )}
-            <ActionDialog title="Account">
+            <ActionDialog
+              title="Account"
+              triggerStyle={shellStyles.headerAction}
+            >
               <Text style={styles.text}>{user?.email}</Text>
               <AuthForm mode="sign-out" />
             </ActionDialog>
             {mobile && (
-              <ActionDialog title="Your Pool" triggerLabel="Menu">
-                <NavigationLinks />
-                {setupLinks}
-                <Link href="/app/rides/new">＋ Plan a ride</Link>
+              <ActionDialog
+                title="Your Pool"
+                triggerLabel="Menu"
+                triggerStyle={shellStyles.headerAction}
+              >
+                <View style={{ gap: spacing.lg }}>
+                  <NavigationLinks />
+                  {setupLinks}
+                  <Link href="/app/rides/new" className="text-link">
+                    <Icon name="plus" size={16} color={colors.green} />
+                    Plan a ride
+                  </Link>
+                </View>
               </ActionDialog>
             )}
           </View>
@@ -340,8 +372,8 @@ export function ApplicationShell({ children }: { children: ReactNode }) {
               }
               contentContainerStyle={{
                 flexGrow: 1,
-                paddingHorizontal: mobile ? 18 : width <= 1200 ? 25 : 40,
-                paddingTop: mobile ? 27 : 38,
+                paddingHorizontal: contentInset,
+                paddingTop: mobile ? spacing.xxl : 36,
                 paddingBottom: 24,
               }}
             >
@@ -365,7 +397,9 @@ export function ApplicationShell({ children }: { children: ReactNode }) {
                     }
                     style={styles.button}
                   >
-                    <Text style={styles.text}>Refresh current data</Text>
+                    <Text style={[styles.text, styles.buttonText]}>
+                      Refresh current data
+                    </Text>
                   </Pressable>
                 </View>
                 <View
@@ -408,9 +442,8 @@ export function ApplicationShell({ children }: { children: ReactNode }) {
             borderTopWidth: 1,
             borderColor: colors.line,
             backgroundColor: colors.surface,
-            paddingTop: 8,
-            paddingHorizontal: 8,
-            paddingBottom: 10,
+            paddingVertical: spacing.xs,
+            paddingHorizontal: spacing.sm,
           }}
         >
           <NavigationLinks mobile />
@@ -442,14 +475,14 @@ export function AuthShell({ children }: { children: ReactNode }) {
           style={{
             width: "100%",
             maxWidth: 480,
-            padding: 28,
+            padding: spacing.xxl,
             backgroundColor: colors.surface,
             borderWidth: 1,
             borderColor: colors.line,
             borderRadius: 18,
           }}
         >
-          <View style={{ marginBottom: 35 }}>
+          <View style={{ marginBottom: spacing.xxl }}>
             <Link href="/" aria-label="Pool home">
               <Brand />
             </Link>

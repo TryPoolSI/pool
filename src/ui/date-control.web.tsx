@@ -1,5 +1,5 @@
 import type { DateProps } from "./date-control";
-import { colors } from "./styles";
+import { colors, fieldHeight, spacing } from "./styles";
 export function DateControl({
   label,
   type,
@@ -19,10 +19,10 @@ export function DateControl({
         font: '16px "DM Sans", sans-serif',
         color: colors.ink,
         background: colors.surface,
-        minHeight: 46,
+        minHeight: fieldHeight,
         border: `1px solid ${colors.outline}`,
         borderRadius: 8,
-        padding: "11px 12px",
+        padding: `10px ${spacing.md}px`,
         boxSizing: "border-box",
         width: "100%",
         minWidth: 0,

@@ -5,6 +5,7 @@ import Link from "@/ui/link";
 import { familyPath, useActiveFamily } from "@/services/active-family";
 import { FamilyMembershipStatus } from "./family-membership-status";
 import { PageHeading, EmptyState, Avatar, Icon } from "./presentation";
+import { colors } from "@/ui/styles";
 import { createClient } from "@/lib/supabase/client";
 import { HomeDriverCoverage } from "./home-driver-coverage";
 
@@ -41,7 +42,8 @@ function HomeContent({ circles }: { circles: { id: string; name: string }[] }) {
         title="Home"
         action={
           <Link className="button secondary" href="/app/attention">
-            Today’s rides →
+            Today’s rides
+            <Icon name="arrow-right" size={16} />
           </Link>
         }
       />
@@ -52,7 +54,7 @@ function HomeContent({ circles }: { circles: { id: string; name: string }[] }) {
             <Link href={familyPath(family.id)}>
               <Avatar name={family.name} />
               {family.name}
-              <UI.Inline aria-hidden="true">›</UI.Inline>
+              <Icon name="chevron-right" size={16} />
             </Link>
           </UI.Section>
         )}
@@ -63,11 +65,11 @@ function HomeContent({ circles }: { circles: { id: string; name: string }[] }) {
               {circles.map((circle) => (
                 <UI.ListItem key={circle.id}>
                   <Link href={`/app/circles/${circle.id}`}>
-                    <UI.Inline className="team-icon">
+                    <UI.Box className="team-icon">
                       <Icon name="shield" />
-                    </UI.Inline>
+                    </UI.Box>
                     {circle.name}
-                    <UI.Inline aria-hidden="true">›</UI.Inline>
+                    <Icon name="chevron-right" size={16} />
                   </Link>
                 </UI.ListItem>
               ))}
@@ -78,16 +80,22 @@ function HomeContent({ circles }: { circles: { id: string; name: string }[] }) {
             </EmptyState>
           )}
           <Link className="text-link" href="/app/invitations">
-            Accept an invitation <UI.Inline aria-hidden="true">↗</UI.Inline>
+            Accept an invitation
+            <Icon name="arrow-right" size={16} color={colors.green} />
           </Link>
         </UI.Section>
       </UI.Box>
       {circles.length > 0 && <HomeDriverCoverage circles={circles} />}
       <UI.Box className="setup-cards">
-        <Link href="/app/vehicles">
-          <Icon name="car" />
-          <UI.Strong>Your vehicles</UI.Strong>
-          <UI.Inline>Registered passenger capacity →</UI.Inline>
+        <Link href="/app/vehicles" aria-label="Your vehicles">
+          <UI.Box className="team-icon">
+            <Icon name="car" />
+          </UI.Box>
+          <UI.Box>
+            <UI.Strong>Your vehicles</UI.Strong>
+            <UI.Small>Registered passenger capacity</UI.Small>
+          </UI.Box>
+          <Icon name="chevron-right" size={16} />
         </Link>
       </UI.Box>
     </>

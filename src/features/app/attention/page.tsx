@@ -1,6 +1,7 @@
 import * as UI from "@/ui/elements";
 import { createScreen } from "@/ui/remote";
 import Link from "@/ui/link";
+import { spacing } from "@/ui/styles";
 import {
   Avatar,
   EmptyState,
@@ -137,7 +138,8 @@ const Attention = createScreen(
         }
         action={
           <Link className="button secondary" href="/app/rides/new">
-            ＋ Plan a ride
+            <Icon name="plus" size={16} />
+            Plan a ride
           </Link>
         }
       >
@@ -149,7 +151,12 @@ const Attention = createScreen(
         <UI.Box className="ride-overview trip-feature">
           <UI.Section className="panel">
             <UI.Box className="section-head">
-              <UI.Paragraph className="eyebrow">CURRENT RIDE</UI.Paragraph>
+              <UI.Paragraph
+                className="eyebrow"
+                style={{ marginBottom: 0, marginTop: 0 }}
+              >
+                CURRENT RIDE
+              </UI.Paragraph>
               <StatusBadge
                 tone={featured.awaiting_count ? "attention" : "positive"}
               >
@@ -188,9 +195,10 @@ const Attention = createScreen(
             <Link
               className="button primary"
               href={`/app/rides/${featured.ride_id}#trip-progress`}
+              style={{ marginTop: spacing.md }}
             >
-              Review {featured.awaiting_count ? "handoffs" : "ride"}{" "}
-              <UI.Inline aria-hidden="true">→</UI.Inline>
+              {`Review ${featured.awaiting_count ? "handoffs" : "ride"}`}
+              <Icon name="arrow-right" size={16} color="white" />
             </Link>
           </UI.Section>
           <UI.Box className="feature-details">
@@ -220,7 +228,7 @@ const Attention = createScreen(
       )}
       <UI.Section className="attention-tasks">
         <UI.Box className="section-head">
-          <UI.Heading2 aria-label="Needs attention">
+          <UI.Heading2 aria-label="Needs attention" style={{ marginBottom: 0 }}>
             Needs attention{" "}
             <UI.Inline className="number" aria-hidden="true">
               {count}
@@ -234,27 +242,30 @@ const Attention = createScreen(
             <UI.List className="task-list">
               {trips.data.slice(0, 25).map((t) => (
                 <UI.ListItem key={t.ride_id}>
-                  <UI.Inline className="task-icon">
-                    <Icon name="home" />
-                  </UI.Inline>
-                  <UI.Box>
-                    <Link href={`/app/rides/${t.ride_id}`}>
-                      {t.pickup_summary} → {t.destination_summary}
-                    </Link>
-                    <UI.Paragraph>
-                      {t.awaiting_count
-                        ? `${t.awaiting_count} awaiting guardian receipt`
-                        : t.started_at
-                          ? "Trip in progress"
-                          : "Awaiting pickup"}
-                      {!!t.missing_recipient_count &&
-                        ` · ${t.missing_recipient_count} receiving guardians needed`}
-                      {t.is_driver && " · You are the driver"}
-                    </UI.Paragraph>
+                  <UI.Box className="task-summary">
+                    <UI.Box className="task-icon">
+                      <Icon name="home" />
+                    </UI.Box>
+                    <UI.Box style={{ flex: 1 }}>
+                      <Link href={`/app/rides/${t.ride_id}`}>
+                        {t.pickup_summary} → {t.destination_summary}
+                      </Link>
+                      <UI.Paragraph style={{ marginVertical: 0 }}>
+                        {t.awaiting_count
+                          ? `${t.awaiting_count} awaiting guardian receipt`
+                          : t.started_at
+                            ? "Trip in progress"
+                            : "Awaiting pickup"}
+                        {!!t.missing_recipient_count &&
+                          ` · ${t.missing_recipient_count} receiving guardians needed`}
+                        {t.is_driver && " · You are the driver"}
+                      </UI.Paragraph>
+                    </UI.Box>
                   </UI.Box>
                   <Link
                     className="button secondary"
                     href={`/app/rides/${t.ride_id}#trip-progress`}
+                    style={{ alignSelf: "center" }}
                   >
                     Review
                   </Link>
@@ -289,23 +300,26 @@ const Attention = createScreen(
             <UI.List className="task-list">
               {driverReplies.map((p) => (
                 <UI.ListItem key={p.proposal_id}>
-                  <UI.Inline className="task-icon">
-                    <Icon name="car" />
-                  </UI.Inline>
-                  <UI.Box>
-                    <Link href={`/app/rides/${p.ride_id}`}>
-                      {p.pickup_summary} → {p.destination_summary}
-                    </Link>
-                    <UI.Paragraph>
-                      {p.vehicle_label} · {p.rider_count} riders ·{" "}
-                      {p.accepted_at
-                        ? "You accepted · Request pending"
-                        : "Your acceptance is needed"}
-                    </UI.Paragraph>
+                  <UI.Box className="task-summary">
+                    <UI.Box className="task-icon">
+                      <Icon name="car" />
+                    </UI.Box>
+                    <UI.Box style={{ flex: 1 }}>
+                      <Link href={`/app/rides/${p.ride_id}`}>
+                        {p.pickup_summary} → {p.destination_summary}
+                      </Link>
+                      <UI.Paragraph style={{ marginVertical: 0 }}>
+                        {p.vehicle_label} · {p.rider_count} riders ·{" "}
+                        {p.accepted_at
+                          ? "You accepted · Request pending"
+                          : "Your acceptance is needed"}
+                      </UI.Paragraph>
+                    </UI.Box>
                   </UI.Box>
                   <Link
                     className="button secondary"
                     href={`/app/rides/${p.ride_id}`}
+                    style={{ alignSelf: "center" }}
                   >
                     Review
                   </Link>
@@ -332,7 +346,7 @@ const Attention = createScreen(
               <UI.Paragraph className="eyebrow">
                 A LITTLE PLANNING GOES A LONG WAY
               </UI.Paragraph>
-              <UI.Heading2>Coming up</UI.Heading2>
+              <UI.Heading2 style={{ marginBottom: 0 }}>Coming up</UI.Heading2>
             </UI.Box>
             <Link className="text-link" href="/app/schedule">
               View the week →
