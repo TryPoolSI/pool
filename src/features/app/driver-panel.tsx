@@ -103,7 +103,7 @@ export const DriverPanel = createPanel(
               ? "Cancelled ride"
               : completed
                 ? "Ride completed"
-                : coverageLabel(status.coverage)}
+                : coverageLabel(status.coverage, status.accepted_at)}
           </UI.Strong>
         </StatusBadge>
         {!completed && candidate && status.coverage === "confirmed" && (

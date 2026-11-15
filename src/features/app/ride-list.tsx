@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import Link from "@/ui/link";
 import { Avatar, Icon, RouteSummary, StatusBadge } from "./presentation";
 import { rideTime, type RideOffer } from "@/lib/rides";
-import type { DriverStatus } from "@/lib/drivers";
+import { coverageLabel, type DriverStatus } from "@/lib/drivers";
 
 async function loadRideList({
   offers,
@@ -61,7 +61,9 @@ export const RideList = createPanel(
                   : status?.coverage === "confirmed"
                     ? "Driver confirmed"
                     : status?.coverage === "awaiting_confirmation"
-                      ? "Driver not confirmed"
+                      ? status.accepted_at
+                        ? coverageLabel(status.coverage, status.accepted_at)
+                        : "Driver not confirmed"
                       : "Needs a driver";
         const tone =
           ride.cancelled_at || hiddenCoverage
