@@ -1,4 +1,5 @@
 import * as UI from "@/ui/elements";
+import { colors } from "@/ui/styles";
 import { createPanel } from "@/ui/remote";
 import { createClient } from "@/lib/supabase/client";
 import Link from "@/ui/link";
@@ -89,21 +90,23 @@ export const RideList = createPanel(
         return (
           <UI.ListItem key={ride.id}>
             <UI.Box className="ride-card-top">
-              <UI.Box className="ride-date" aria-hidden="true">
-                <UI.Inline>{weekday}</UI.Inline>
-                <UI.Strong>{date}</UI.Strong>
-              </UI.Box>
-              <UI.Box>
-                <Link href={`/app/rides/${ride.id}`}>
-                  {ride.pickup_summary} → {ride.destination_summary}
-                </Link>
-                <UI.Paragraph>
-                  {ride.direction === "return" ? "Return" : "Outbound"} ·
-                  Pickup: {rideTime(ride.starts_at, ride.timezone)}
-                </UI.Paragraph>
-                <UI.Paragraph>
-                  Drop-off: {rideTime(ride.ends_at, ride.timezone)}
-                </UI.Paragraph>
+              <UI.Box className="ride-card-heading">
+                <UI.Box className="ride-date" aria-hidden="true">
+                  <UI.Inline>{weekday}</UI.Inline>
+                  <UI.Strong>{date}</UI.Strong>
+                </UI.Box>
+                <UI.Box className="ride-card-times">
+                  <Link href={`/app/rides/${ride.id}`}>
+                    {ride.pickup_summary} → {ride.destination_summary}
+                  </Link>
+                  <UI.Small>
+                    {ride.direction === "return" ? "Return" : "Outbound"} ·
+                    Pickup: {rideTime(ride.starts_at, ride.timezone)}
+                  </UI.Small>
+                  <UI.Small>
+                    Drop-off: {rideTime(ride.ends_at, ride.timezone)}
+                  </UI.Small>
+                </UI.Box>
               </UI.Box>
               <StatusBadge tone={tone}>{label}</StatusBadge>
             </UI.Box>
@@ -163,27 +166,31 @@ export const RideList = createPanel(
               )}
             </UI.Box>
             <UI.Box className="ride-card-bottom">
-              {driver ? (
-                <>
+              <UI.Box className="ride-card-driver">
+                {driver ? (
                   <Avatar name={driver} />
-                  <UI.Inline>
-                    {trip?.completed_at ? "Trip driver" : "Driver"}: {driver}
-                  </UI.Inline>
-                </>
-              ) : (
-                <>
-                  <Icon name="car" />
-                  <UI.Inline>
-                    {hiddenCoverage
+                ) : (
+                  <UI.Box className="team-icon">
+                    <Icon name="car" />
+                  </UI.Box>
+                )}
+                <UI.Inline>
+                  {driver
+                    ? `${trip?.completed_at ? "Trip driver" : "Driver"}: ${driver}`
+                    : hiddenCoverage
                       ? "Private driver details"
                       : ride.cancelled_at
                         ? "Ride cancelled"
                         : "No confirmed driver"}
-                  </UI.Inline>
-                </>
-              )}
-              <Link className="button plain" href={`/app/rides/${ride.id}`}>
-                View ride <UI.Inline aria-hidden="true">→</UI.Inline>
+                </UI.Inline>
+              </UI.Box>
+              <Link
+                className="text-link"
+                href={`/app/rides/${ride.id}`}
+                style={{ alignSelf: "center" }}
+              >
+                View ride
+                <Icon name="arrow-right" size={16} color={colors.green} />
               </Link>
             </UI.Box>
           </UI.ListItem>

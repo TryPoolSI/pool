@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { TextInput, Pressable, Text, View } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { styles } from "./styles";
+import { spacing, styles } from "./styles";
 import { keyboardInputProps } from "./keyboard-input";
 export type DateProps = {
   testID?: string;
@@ -27,7 +27,7 @@ export function DateControl({
     : new Date().toISOString().slice(0, 16);
   const parsed = new Date(`${wallTime}Z`);
   return (
-    <View style={{ gap: 8 }}>
+    <View style={{ gap: spacing.sm }}>
       <TextInput
         {...keyboardInputProps}
         testID={testID}
@@ -39,7 +39,7 @@ export function DateControl({
         autoCapitalize="none"
         style={styles.field}
       />
-      <View style={styles.row}>
+      <View style={styles.actionRow}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`Choose ${label} date`}
@@ -47,7 +47,7 @@ export function DateControl({
           onPress={() => setMode("date")}
           style={styles.button}
         >
-          <Text style={styles.text}>Choose date</Text>
+          <Text style={[styles.text, styles.buttonText]}>Choose date</Text>
         </Pressable>
         {type !== "date" && (
           <Pressable
@@ -57,7 +57,7 @@ export function DateControl({
             onPress={() => setMode("time")}
             style={styles.button}
           >
-            <Text style={styles.text}>Choose time</Text>
+            <Text style={[styles.text, styles.buttonText]}>Choose time</Text>
           </Pressable>
         )}
       </View>

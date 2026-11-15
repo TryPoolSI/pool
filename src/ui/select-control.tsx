@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Modal, Pressable, ScrollView, Text, View } from "react-native";
-import { colors, styles } from "./styles";
+import { Icon } from "./icon";
+import { colors, spacing, styles } from "./styles";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 export type SelectProps = {
   testID?: string;
@@ -20,23 +21,25 @@ export function SelectControl({
 }: SelectProps) {
   const [open, setOpen] = useState(false);
   const insets = useSafeAreaInsets();
+  const selected = options.find((option) => option.value === value) ?? options[0];
   return (
     <>
       <Pressable
         testID={testID}
         accessibilityRole="button"
         accessibilityLabel={label}
-        accessibilityValue={{
-          text:
-            options.find((o) => o.value === value)?.label ?? options[0]?.label,
-        }}
+        accessibilityValue={{ text: selected?.label }}
         disabled={disabled}
         onPress={() => setOpen(true)}
-        style={styles.field}
+        style={[
+          styles.field,
+          styles.row,
+          { justifyContent: "space-between" },
+          disabled && styles.disabled,
+        ]}
       >
-        <Text style={styles.text}>
-          {options.find((o) => o.value === value)?.label ?? options[0]?.label} ⌄
-        </Text>
+        <Text style={styles.text}>{selected?.label}</Text>
+        <Icon name="chevron-down" size={16} color={colors.muted} />
       </Pressable>
       <Modal
         visible={open}
@@ -99,9 +102,9 @@ export function SelectControl({
             <Pressable
               accessibilityRole="button"
               onPress={() => setOpen(false)}
-              style={styles.button}
+              style={[styles.button, { marginTop: spacing.md }]}
             >
-              <Text style={styles.text}>Done</Text>
+              <Text style={[styles.text, styles.buttonText]}>Done</Text>
             </Pressable>
           </View>
         </View>

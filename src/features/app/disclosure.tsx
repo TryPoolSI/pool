@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
-import { colors, styles } from "@/ui/styles";
+import { Icon } from "@/ui/icon";
+import { colors, controlHeight, spacing, styles } from "@/ui/styles";
 export function Disclosure({
   title,
   children,
@@ -23,11 +24,12 @@ export function Disclosure({
         accessibilityState={{ expanded }}
         onPress={() => setExpanded(!expanded)}
         style={{
-          minHeight: 44,
-          paddingVertical: 12,
+          minHeight: controlHeight,
+          paddingVertical: spacing.sm,
           flexDirection: "row",
           justifyContent: "space-between",
           alignItems: "center",
+          gap: spacing.md,
         }}
       >
         <Text
@@ -38,7 +40,11 @@ export function Disclosure({
         >
           {title}
         </Text>
-        <Text style={styles.text}>{expanded ? "⌃" : "⌄"}</Text>
+        <Icon
+          name={expanded ? "chevron-up" : "chevron-down"}
+          size={16}
+          color={colors.green}
+        />
       </Pressable>
       {expanded && (
         <View style={{ paddingBottom: 12, gap: 8 }}>{children}</View>

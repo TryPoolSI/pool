@@ -3,6 +3,7 @@ import { useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import * as UI from "@/ui/elements";
+import { styles } from "@/ui/styles";
 import { AddVehicleForm } from "../driver-form";
 import { OutcomeFocus } from "../outcome-focus";
 
@@ -73,7 +74,7 @@ export function FamilyVehicleSetup({
   return (
     <UI.Section className="panel">
       <UI.Paragraph>Add the car you usually drive.</UI.Paragraph>
-      {adding ? (
+      {adding && (
         <AddVehicleForm
           onVehicleSaved={async () => {
             await queryClient.cancelQueries({ queryKey, exact: true });
@@ -82,17 +83,20 @@ export function FamilyVehicleSetup({
             setSaved(true);
           }}
         />
-      ) : (
-        <UI.Button onPress={() => setAdding(true)}>Add your car</UI.Button>
       )}
-      <UI.Button
-        onPress={() => {
-          setAdding(false);
-          setSkipped(true);
-        }}
-      >
-        Skip
-      </UI.Button>
+      <UI.Box style={styles.actionRow}>
+        {!adding && (
+          <UI.Button onPress={() => setAdding(true)}>Add your car</UI.Button>
+        )}
+        <UI.Button
+          onPress={() => {
+            setAdding(false);
+            setSkipped(true);
+          }}
+        >
+          Skip
+        </UI.Button>
+      </UI.Box>
     </UI.Section>
   );
 }

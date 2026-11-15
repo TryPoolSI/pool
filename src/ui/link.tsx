@@ -1,8 +1,15 @@
 import { Children, isValidElement } from "react";
 import { Link as RouterLink } from "expo-router";
-import { Pressable, Text, StyleSheet, useWindowDimensions } from "react-native";
+import {
+  Pressable,
+  Text,
+  StyleSheet,
+  useWindowDimensions,
+  type StyleProp,
+  type ViewStyle,
+} from "react-native";
 import type { ReactNode } from "react";
-import { colors, styles, classStyle } from "./styles";
+import { colors, controlHeight, spacing, styles, classStyle } from "./styles";
 function linkLabel(children: ReactNode): string {
   return Children.toArray(children)
     .map((child) =>
@@ -22,11 +29,13 @@ export default function Link({
   href,
   children,
   className = "",
+  style,
   ...props
 }: {
   href: string;
   children?: ReactNode;
   className?: string;
+  style?: StyleProp<ViewStyle>;
   "aria-current"?: string;
   "aria-label"?: string;
   onClick?: () => void;
@@ -34,6 +43,7 @@ export default function Link({
   const { width } = useWindowDimensions();
   const button = /button/.test(className);
   const primary = /primary/.test(className);
+  const textLink = className.includes("text-link");
   const complex = Children.toArray(children).some(isValidElement);
   if (!button && !complex)
     return (
@@ -49,6 +59,7 @@ export default function Link({
             ? { backgroundColor: colors.lime, borderRadius: 9 }
             : undefined,
           classStyle(className, width),
+          style,
         ]}
       >
         {children}
@@ -65,16 +76,13 @@ export default function Link({
           button
             ? styles.button
             : {
-                minHeight: 44,
+                minHeight: controlHeight,
                 flexDirection: "row",
                 alignItems: "center",
-                gap: 12,
+                gap: textLink ? spacing.sm : spacing.md,
                 alignSelf: "flex-start",
                 maxWidth: "100%",
               },
-          className.includes("mobile-tab")
-            ? { flex: 1, paddingHorizontal: 3 }
-            : undefined,
           primary ? styles.primary : undefined,
           className.includes("plain")
             ? {
@@ -83,16 +91,20 @@ export default function Link({
                 alignSelf: "stretch",
               }
             : undefined,
-          props["aria-current"] && !className.includes("mobile-tab")
-            ? { backgroundColor: colors.lime }
-            : undefined,
+          props["aria-current"] ? { backgroundColor: colors.lime } : undefined,
+          style,
         ])}
       >
         {complex ? (
           Children.map(children, (child) =>
             typeof child === "string" || typeof child === "number" ? (
               <Text
-                style={[styles.text, primary ? styles.primaryText : undefined]}
+                style={[
+                  styles.text,
+                  button || textLink ? styles.buttonText : undefined,
+                  textLink ? { color: colors.green } : undefined,
+                  primary ? styles.primaryText : undefined,
+                ]}
               >
                 {child}
               </Text>
