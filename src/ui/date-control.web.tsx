@@ -13,7 +13,7 @@ export function DateControl({
       type={type}
       value={value}
       disabled={disabled}
-      step={1}
+      step={type === "time" ? 60 : 1}
       onChange={(e) => onChange(e.target.value)}
       style={{
         font: '16px "DM Sans", sans-serif',

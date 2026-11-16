@@ -375,8 +375,9 @@ const classes: Record<string, Rule> = {
   },
   "week-strip": {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: 10,
-    marginTop: 24,
+    marginTop: 8,
     marginBottom: spacing.md,
   },
   "week-day": {

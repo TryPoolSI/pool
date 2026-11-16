@@ -1,3 +1,4 @@
+import { localDate, validTimezone } from "@/lib/rides";
 import { newRequestId } from "@/lib/request-id";
 import * as UI from "@/ui/elements";
 import { createScreen } from "@/ui/remote";
@@ -6,10 +7,37 @@ import { PageHeading } from "../../presentation";
 import { createClient } from "@/lib/supabase/client";
 import { familyPath } from "@/services/active-family";
 import { RideForm, ChildChoices, LocalTimeField } from "../../ride-form";
+import { RideRouteFields } from "./ride-route-fields";
+
+function scheduleDefaults(query: { date?: string; timezone?: string }) {
+  const defaults: { date?: string; timezone?: string } = {};
+  if (typeof query.date === "string") {
+    try {
+      localDate(query.date);
+      defaults.date = query.date;
+    } catch {
+      // Leave the date unset when a direct link contains an invalid date.
+    }
+  }
+  if (typeof query.timezone === "string" && query.timezone.length <= 100) {
+    try {
+      defaults.timezone = validTimezone(query.timezone);
+    } catch {
+      // Fall back to the planner's UTC default.
+    }
+  }
+  return defaults;
+}
+
 async function loadNewRide({
   searchParams,
 }: {
-  searchParams: Promise<{ family?: string; circle?: string }>;
+  searchParams: Promise<{
+    family?: string;
+    circle?: string;
+    date?: string;
+    timezone?: string;
+  }>;
 }) {
   const query = await searchParams;
   const client = await createClient();
@@ -60,12 +88,14 @@ async function loadNewRide({
   ]);
   if (children.error || roster.error)
     throw new Error("Riders could not be loaded");
-  return { model: { contexts, family, circle, children, roster } };
+  return {
+    model: { contexts, family, circle, children, roster, schedule: scheduleDefaults(query) },
+  };
 }
 
 const NewRide = createScreen(
   loadNewRide,
-  ({ contexts, family, circle, children, roster }) => (
+  ({ contexts, family, circle, children, roster, schedule }) => (
     <UI.Box className="ride-plan">
       <PageHeading title="Plan a ride">
         {family.name} · {circle.name}
@@ -75,7 +105,11 @@ const NewRide = createScreen(
           {contexts.map((item) => (
             <Link
               key={`${item.family.id}-${item.circle.id}`}
-              href={`/app/rides/new?family=${item.family.id}&circle=${item.circle.id}`}
+              href={`/app/rides/new?${new URLSearchParams({
+                family: item.family.id,
+                circle: item.circle.id,
+                ...schedule,
+              })}`}
             >
               {item.family.name} · {item.circle.name}
             </Link>
@@ -90,7 +124,7 @@ const NewRide = createScreen(
         </UI.Paragraph>
       ) : (
         <RideForm
-          key={`${family.id}-${circle.id}`}
+          key={`${family.id}-${circle.id}-${schedule.date ?? ""}-${schedule.timezone ?? "UTC"}`}
           command="createRide"
           fields={{
             ride_id: newRequestId(),
@@ -99,61 +133,14 @@ const NewRide = createScreen(
           }}
           label="Create ride"
         >
-          <UI.Box className="form-section">
-            <UI.Heading2>Route</UI.Heading2>
-            <UI.Label>
-              Travel direction
-              <UI.Select name="direction" required>
-                <UI.Option value="outbound">Outbound</UI.Option>
-                <UI.Option value="return">Return</UI.Option>
-              </UI.Select>
-            </UI.Label>
-            <UI.Paragraph>
-              Use general place names in the summaries. Invited families can see
-              them before joining.
-            </UI.Paragraph>
-            <UI.Box className="form-pair">
-              <UI.Label>
-                Pickup summary
-                <UI.Field
-                  name="pickup_summary"
-                  required
-                  maxLength={80}
-                  placeholder="Neighborhood meeting area"
-                />
-              </UI.Label>
-              <UI.Label>
-                Drop-off summary
-                <UI.Field
-                  name="destination_summary"
-                  required
-                  maxLength={80}
-                  placeholder="Activity area"
-                />
-              </UI.Label>
-            </UI.Box>
-            <UI.Paragraph>
-              Exact locations stay with participating families and the confirmed
-              driver.
-            </UI.Paragraph>
-            <UI.Box className="form-pair">
-              <UI.Label>
-                Exact pickup
-                <UI.Field name="pickup" required maxLength={300} />
-              </UI.Label>
-              <UI.Label>
-                Exact drop-off
-                <UI.Field name="destination" required maxLength={300} />
-              </UI.Label>
-            </UI.Box>
-          </UI.Box>
+          <RideRouteFields familyId={family.id} />
           <UI.Box className="form-section">
             <UI.Heading2>Time</UI.Heading2>
             <UI.Label>
               IANA timezone
               <UI.Field
                 name="timezone"
-                defaultValue="UTC"
+                defaultValue={schedule.timezone ?? "UTC"}
                 required
                 maxLength={100}
                 placeholder="America/Denver"
@@ -161,10 +148,18 @@ const NewRide = createScreen(
             </UI.Label>
             <UI.Box className="form-pair">
               <UI.Box>
-                <LocalTimeField name="starts" label="Pickup time" />
+                <LocalTimeField
+                  name="starts"
+                  label="Pickup"
+                  initialDate={schedule.date}
+                />
               </UI.Box>
               <UI.Box>
-                <LocalTimeField name="ends" label="Drop-off time" />
+                <LocalTimeField
+                  name="ends"
+                  label="Drop-off"
+                  initialDate={schedule.date}
+                />
               </UI.Box>
             </UI.Box>
             <UI.Paragraph>Times use the selected timezone.</UI.Paragraph>

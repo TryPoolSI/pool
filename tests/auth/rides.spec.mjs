@@ -4,12 +4,14 @@ import {
   privateChildId,
   authenticatedRpc,
   ownChild,
+  sessionToken,
 } from "./rpc.mjs";
 import {
   expandDetails,
   visit,
   refresh,
   openAction,
+  closeAction,
   account,
   addChild,
   family,
@@ -400,5 +402,149 @@ test("R4 real multi-session planning, private offers, endpoint denials, enrollme
       outsider.context.close(),
       independent.close(),
     ]);
+  }
+});
+
+
+test("Schedule opens a dated planner and shares named routes only within the family", async ({
+  browser,
+}) => {
+  const parent = await account(browser, "schedule-planner");
+  const other = await account(browser, "schedule-other");
+  const { page } = parent;
+  const weekUrl = "/app/schedule?date=2021-11-04&timezone=America%2FDenver";
+  const routeName = "School → Soccer";
+  const locations = {
+    "Pickup summary": "School",
+    "Drop-off summary": "Soccer",
+    "Exact pickup": "101 School Lane, east door",
+    "Exact drop-off": "202 Soccer Lane, north gate",
+  };
+  let phone;
+  try {
+    const parentFamily = await family(page, "Schedule parent family", "Parent");
+    const otherFamily = await family(other.page, "Schedule other family", "Other parent");
+    await addChild(other.page, "Schedule other child");
+    await addChild(page, "Schedule rider");
+    await openAction(page, "Create a circle");
+    await page.getByLabel("Circle name").fill("After-school circle");
+    await page.getByRole("button", { name: "Create circle", exact: true }).click();
+    await page.getByRole("link", { name: "Open saved membership" }).click();
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("After-school circle");
+    await joinCircle(parent, other, page.url(), "Schedule other family");
+
+    await visit(page, weekUrl);
+    const week = page.getByRole("group", { name: "Full week" });
+    await expect(week.getByRole("link")).toHaveCount(7);
+    const thursday = week.getByRole("link", { name: /Plan a ride for Thursday, November 4, 2021/ });
+    await thursday.focus();
+    await expect(thursday).toBeFocused();
+    await page.keyboard.press("Enter");
+    const field = (label) => page.getByLabel(label, { exact: true });
+    await expect(field("Pickup date")).toHaveValue("2021-11-04");
+    await expect(field("Drop-off date")).toHaveValue("2021-11-04");
+    await expect(field("IANA timezone")).toHaveValue("America/Denver");
+    await expect(field("Pickup time")).toHaveValue("");
+    await expect(field("Drop-off time")).toHaveValue("");
+    await field("Pickup time").fill("15:00");
+    await field("Drop-off time").fill("15:40");
+    for (const [label, value] of Object.entries(locations))
+      await field(label).fill(value);
+    await field("Schedule rider").check();
+
+    const saveDialog = await openAction(page, "Save route");
+    await saveDialog.getByLabel("Route name").fill(routeName);
+    await saveDialog.getByRole("button", { name: "Save route", exact: true }).click();
+    await expect(saveDialog.getByRole("status")).toHaveText("Route saved");
+    await closeAction(page, "Save route");
+    await expect(field("Pickup date")).toHaveValue("2021-11-04");
+    await expect(field("Pickup time")).toHaveValue("15:00");
+    await expect(field("Schedule rider")).toBeChecked();
+    await page.getByRole("button", { name: "Create ride", exact: true }).click();
+    await expect(page.getByRole("status")).toContainText("Saved");
+    await page.getByRole("link", { name: "Open saved result" }).click();
+    await expect(
+      page.getByRole("heading", { name: routeName, level: 1 }),
+    ).toBeVisible();
+
+    phone = await browser.newContext({
+      hasTouch: true,
+      viewport: { width: 320, height: 750 },
+      storageState: await parent.context.storageState(),
+    });
+    const phonePage = await phone.newPage();
+    await visit(phonePage, weekUrl);
+    const phoneWeek = phonePage.getByRole("group", { name: "Full week" });
+    await expect(phoneWeek.getByRole("link")).toHaveCount(7);
+    for (const day of await phoneWeek.getByRole("link").all()) {
+      const bounds = await day.boundingBox();
+      expect(bounds.width).toBeGreaterThanOrEqual(44);
+      expect(bounds.height).toBeGreaterThanOrEqual(44);
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(320);
+    }
+    await phoneWeek
+      .getByRole("link", { name: /Plan a ride for Saturday, November 6, 2021/ })
+      .tap();
+    const phoneField = (label) => phonePage.getByLabel(label, { exact: true });
+    await expect(phoneField("Pickup date")).toHaveValue("2021-11-06");
+    const [routeId] = await phoneField("Use a saved route").selectOption({ label: routeName });
+    for (const [label, value] of Object.entries(locations))
+      await expect(phoneField(label)).toHaveValue(value);
+    await expect(phoneField("Pickup date")).toHaveValue("2021-11-06");
+    await expect(phoneField("Drop-off date")).toHaveValue("2021-11-06");
+    await expect(phoneField("IANA timezone")).toHaveValue("America/Denver");
+    await expect(phoneField("Pickup time")).toHaveValue("");
+
+    const changedPickup = "101 School Lane, west door";
+    await phoneField("Exact pickup").fill(changedPickup);
+    await phoneField("Pickup time").fill("19:15");
+    await phoneField("Drop-off time").fill("20:00");
+    await phoneField("Schedule rider").check();
+    await phoneField("Schedule other family").check();
+    await phonePage.getByRole("button", { name: "Create ride", exact: true }).click();
+    await phonePage.getByRole("link", { name: "Open saved result" }).click();
+    await expect(phonePage.getByText(changedPickup, { exact: true })).toBeVisible();
+    const rideId = new URL(phonePage.url()).pathname.split("/").at(-1);
+    const response = await authenticatedRpc(phonePage, "ride_offer", { p_id: rideId });
+    expect(response.ok()).toBe(true);
+    const [ride] = await response.json();
+    expect(ride.timezone).toBe("America/Denver");
+    expect(new Date(ride.starts_at).toISOString()).toBe("2021-11-07T01:15:00.000Z");
+
+    const familyId = new URL(parentFamily).pathname.split("/").at(-1);
+    const otherFamilyId = new URL(otherFamily).pathname.split("/").at(-1);
+    const lookup = async (person) => {
+      const token = await sessionToken(person.context());
+      const filters = new URLSearchParams({
+        family_id: `eq.${familyId}`,
+        id: `eq.${routeId}`,
+        select: "name,pickup,destination",
+      });
+      const rows = await person.request.get(`http://localhost:55321/rest/v1/saved_routes?${filters}`, {
+        headers: {
+          apikey: process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+          authorization: `Bearer ${token}`,
+        },
+      });
+      expect(rows.ok()).toBe(true);
+      return rows.json();
+    };
+    expect(await lookup(phonePage)).toEqual([{
+      name: routeName,
+      pickup: locations["Exact pickup"],
+      destination: locations["Exact drop-off"],
+    }]);
+    await visit(other.page, `${phonePage.url()}?family=${otherFamilyId}`);
+    await expect(other.page.getByRole("heading", { name: routeName, level: 1 })).toBeVisible();
+    await expect(other.page.getByText(changedPickup, { exact: true })).toHaveCount(0);
+    expect(await lookup(other.page)).toEqual([]);
+    const otherRouteList = other.page.waitForResponse((result) =>
+      new URL(result.url()).pathname.endsWith("/saved_routes"),
+    );
+    await visit(other.page, "/app/rides/new");
+    expect((await otherRouteList).ok()).toBe(true);
+    await expect(other.page.getByLabel("Use a saved route")).toHaveCount(0);
+  } finally {
+    await Promise.all([parent.context.close(), other.context.close(), phone?.close()]);
   }
 });

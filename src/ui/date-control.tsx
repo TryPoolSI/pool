@@ -20,11 +20,12 @@ export function DateControl({
   onChange,
 }: DateProps) {
   const [mode, setMode] = useState<"date" | "time" | null>(null);
-  const wallTime = value
-    ? value.includes("T")
-      ? value
-      : `${value}T12:00`
-    : new Date().toISOString().slice(0, 16);
+  let wallTime = new Date().toISOString().slice(0, 16);
+  if (value) {
+    if (type === "time") wallTime = `1970-01-01T${value}`;
+    else if (type === "date") wallTime = `${value}T12:00`;
+    else wallTime = value;
+  }
   const parsed = new Date(`${wallTime}Z`);
   return (
     <View style={{ gap: spacing.sm }}>
@@ -32,7 +33,13 @@ export function DateControl({
         {...keyboardInputProps}
         testID={testID}
         accessibilityLabel={label}
-        placeholder={type === "date" ? "YYYY-MM-DD" : "YYYY-MM-DDTHH:mm"}
+        placeholder={
+          type === "date"
+            ? "YYYY-MM-DD"
+            : type === "time"
+              ? "HH:mm"
+              : "YYYY-MM-DDTHH:mm"
+        }
         value={value}
         onChangeText={onChange}
         editable={!disabled}
@@ -40,19 +47,25 @@ export function DateControl({
         style={styles.field}
       />
       <View style={styles.actionRow}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Choose ${label} date`}
-          disabled={disabled}
-          onPress={() => setMode("date")}
-          style={styles.button}
-        >
-          <Text style={[styles.text, styles.buttonText]}>Choose date</Text>
-        </Pressable>
+        {type !== "time" && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={
+              type === "date" ? `Choose ${label}` : `Choose ${label} date`
+            }
+            disabled={disabled}
+            onPress={() => setMode("date")}
+            style={styles.button}
+          >
+            <Text style={[styles.text, styles.buttonText]}>Choose date</Text>
+          </Pressable>
+        )}
         {type !== "date" && (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={`Choose ${label} time`}
+            accessibilityLabel={
+              type === "time" ? `Choose ${label}` : `Choose ${label} time`
+            }
             disabled={disabled}
             onPress={() => setMode("time")}
             style={styles.button}
@@ -68,8 +81,13 @@ export function DateControl({
           timeZoneName="UTC"
           onChange={(_, date) => {
             setMode(null);
-            if (date)
-              onChange(date.toISOString().slice(0, type === "date" ? 10 : 16));
+            if (!date) return;
+            const iso = date.toISOString();
+            onChange(
+              type === "time"
+                ? iso.slice(11, 16)
+                : iso.slice(0, type === "date" ? 10 : 16),
+            );
           }}
         />
       )}

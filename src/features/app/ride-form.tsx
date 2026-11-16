@@ -1,3 +1,4 @@
+import { useState } from "react";
 import * as UI from "@/ui/elements";
 import { Disclosure } from "./presentation";
 import { CommandForm } from "@/ui/command-form";
@@ -71,25 +72,77 @@ export function SeatField({ value = "standard" }: { value?: string }) {
     </UI.Label>
   );
 }
-export function LocalTimeField({
+function ScheduledTimeFields({
   name,
   label,
+  initialDate,
 }: {
   name: string;
   label: string;
+  initialDate: string;
 }) {
+  const [date, setDate] = useState(initialDate);
+  const [time, setTime] = useState("");
   return (
     <>
       <UI.Label>
-        {label}
-        <UI.Field type="datetime-local" name={`${name}_local`} required />
+        {label} date
+        <UI.Field
+          name={`${name}_date`}
+          type="date"
+          value={date}
+          onChange={({ target }) => setDate(target.value)}
+          required
+        />
       </UI.Label>
-      <Disclosure title={`${label}: daylight saving options`}>
+      <UI.Label>
+        {label} time
+        <UI.Field
+          name={`${name}_time`}
+          type="time"
+          value={time}
+          onChange={({ target }) => setTime(target.value)}
+          required
+        />
+      </UI.Label>
+      <UI.Field
+        name={`${name}_local`}
+        type="hidden"
+        value={date && time ? `${date}T${time}` : ""}
+      />
+    </>
+  );
+}
+
+export function LocalTimeField({
+  name,
+  label,
+  initialDate,
+}: {
+  name: string;
+  label: string;
+  initialDate?: string;
+}) {
+  return (
+    <>
+      {initialDate ? (
+        <ScheduledTimeFields
+          name={name}
+          label={label}
+          initialDate={initialDate}
+        />
+      ) : (
+        <UI.Label>
+          {label} time
+          <UI.Field type="datetime-local" name={`${name}_local`} required />
+        </UI.Label>
+      )}
+      <Disclosure title={`${label} time: daylight saving options`}>
         <UI.Paragraph>
           If this hour repeats, choose which occurrence you mean.
         </UI.Paragraph>
         <UI.Label>
-          {label} repeated-hour choice
+          {label} time repeated-hour choice
           <UI.Select
             name={name === "starts" ? "start_occurrence" : "end_occurrence"}
             defaultValue="reject"

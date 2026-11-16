@@ -131,12 +131,12 @@ async function executeRide(
           start = zonedInstant(
             requiredText(data, "starts_local"),
             zone,
-            requiredText(data, "start_occurrence"),
+            data.get("start_occurrence")?.trim(),
           );
           end = zonedInstant(
             requiredText(data, "ends_local"),
             zone,
-            requiredText(data, "end_occurrence"),
+            data.get("end_occurrence")?.trim(),
           );
         } catch (error) {
           return {

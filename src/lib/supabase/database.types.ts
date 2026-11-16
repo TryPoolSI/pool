@@ -529,6 +529,26 @@ isOneToOne: false
       referencedColumns: ["family_id","user_id"]
     }
                   ]
+                },"saved_routes": {
+                  Row: {
+                    "destination": string,"destination_summary": string,"family_id": string,"id": string,"name": string,"pickup": string,"pickup_summary": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "destination": string,"destination_summary": string,"family_id": string,"id": string,"name": string,"pickup": string,"pickup_summary": string
+                  }
+                  Update: {
+                    "destination"?: string,"destination_summary"?: string,"family_id"?: string,"id"?: string,"name"?: string,"pickup"?: string,"pickup_summary"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "saved_routes_family_id_fkey"
+      columns: ["family_id"]
+isOneToOne: false
+      referencedRelation: "families"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"vehicles": {
                   Row: {
                     "created_at": string,"driver_id": string,"id": string,"label": string,"passenger_seats": number,"retired_at": string | null,"version": number
@@ -681,6 +701,9 @@ isOneToOne: false
                            },
 "save_own_child":
 { Args: { "p_display_name": string,"p_family_id": string,"p_id": string,"p_revision": number,"p_seat_requirement": string }; Returns: string
+                           },
+"save_route":
+{ Args: { "p_destination": string,"p_destination_summary": string,"p_family_id": string,"p_id": string,"p_name": string,"p_pickup": string,"p_pickup_summary": string }; Returns: string
                            },
 "save_vehicle":
 { Args: { "p_id": string,"p_label": string,"p_passenger_seats": number,"p_retire": boolean,"p_version": number }; Returns: string
