@@ -95,6 +95,21 @@ test("create uses explicit zone, stable request ID, own context and public-sessi
   assert.equal(args.p_family_id, family);
   assert.equal(Object.hasOwn(args, "p_created_by"), false);
 });
+test("closed daylight-saving controls default to rejecting repeated hours", async () => {
+  const draft = {
+    ...fields,
+    start_occurrence: undefined,
+    end_occurrence: undefined,
+  };
+  const repeated = await rideAction({}, draft);
+  assert.match(repeated.error, /occurs twice/);
+  assert.equal(rpc.mock.callCount(), 0);
+
+  const result = await rideAction({}, { ...draft, starts_local: "2027-11-07T00:30" });
+  assert.equal(result.path, `/app/rides/${ride}`);
+  const [, args] = rpc.mock.calls[0].arguments;
+  assert.equal(args.p_starts_at, "2027-11-07T06:30:00.000Z");
+});
 test("a confirmed child save updates the scoped roster without replacing a newer revision", async () => {
   const roster = familyChildrenKey("actor", family);
   const otherRoster = familyChildrenKey("another adult", family);

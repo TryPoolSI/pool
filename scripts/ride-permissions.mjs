@@ -53,6 +53,39 @@ export async function ridePermissionTests(status, sql) {
   await denied(creator.db, "save_own_child", { ...a, p_revision: 1 }, "PT409");
   const args = rideArgs(family, circle, a.p_id, [second, fourth]);
   const anon = client();
+  const savedRoute = {
+    p_family_id: second,
+    p_id: crypto.randomUUID(),
+    p_name: " School → Soccer ",
+    p_pickup_summary: "School",
+    p_destination_summary: "Soccer",
+    p_pickup: "School side door",
+    p_destination: "Soccer north gate",
+  };
+  const routeRows = (db) =>
+    db.from("saved_routes").select("*").eq("family_id", second).eq("id", savedRoute.p_id);
+  const routeSaves = await Promise.all([
+    ok(other.db, "save_route", savedRoute),
+    ok(other.db, "save_route", savedRoute),
+  ]);
+  assert.deepEqual(routeSaves, [savedRoute.p_id, savedRoute.p_id]);
+  const ownRoute = await routeRows(guardian.db);
+  assert.ifError(ownRoute.error);
+  assert.equal(ownRoute.data.length, 1);
+  assert.equal(ownRoute.data[0].name, "School → Soccer");
+  assert.equal(ownRoute.data[0].pickup, "School side door");
+  await ok(guardian.db, "save_route", { ...savedRoute, p_id: crypto.randomUUID(), p_name: "Evening practice" });
+  await denied(other.db, "save_route", { ...savedRoute, p_pickup: "Other door" }, "PT409");
+  await denied(other.db, "save_route", { ...savedRoute, p_id: crypto.randomUUID(), p_name: "school → soccer" }, "23505");
+  await denied(other.db, "save_route", { ...savedRoute, p_id: crypto.randomUUID(), p_name: " " }, "23514");
+  for (const person of [creator, coordinator, unrelated]) {
+    const foreignRoutes = await routeRows(person.db);
+    assert.ifError(foreignRoutes.error);
+    assert.deepEqual(foreignRoutes.data, []);
+    await denied(person.db, "save_route", savedRoute, "PT404");
+  }
+  await ok(creator.db, "save_route", { ...savedRoute, p_family_id: family });
+  await denied(anon, "save_route", savedRoute);
   for (const invalid of [
     { p_child_ids: [] }, { p_child_ids: [b.p_id] }, { p_child_ids: [a.p_id, a.p_id] },
     { p_invited_family_ids: [outside] }, { p_invited_family_ids: [second, second] }, { p_invited_family_ids: [null] },
@@ -82,12 +115,12 @@ export async function ridePermissionTests(status, sql) {
     assert.deepEqual((await person.db.from("children").select("*").eq("family_id", family)).data, []);
   }
   assert.deepEqual(await ok(coordinator.db, "ride_offer", { p_id: ride }), [], "Coordinator has no ride directory");
-  const tables = ["children", "rides", "ride_families", "ride_riders", "ride_locations"];
+  const tables = ["children", "rides", "ride_families", "ride_riders", "ride_locations", "saved_routes"];
   for (const table of tables) {
     assert.ok((await anon.from(table).select("*")).error);
     for (const db of [creator.db, other.db, unrelated.db]) {
       assert.equal((await db.from(table).insert({})).error?.code, "42501");
-      const key = table === "children" || table === "rides" ? "id" : "ride_id";
+      const key = ["children", "rides", "saved_routes"].includes(table) ? "id" : "ride_id";
       assert.equal((await db.from(table).update({ [key]: crypto.randomUUID() }).eq(key, ride)).error?.code, "42501");
       assert.equal((await db.from(table).delete().eq(key, ride)).error?.code, "42501");
     }
@@ -141,6 +174,11 @@ export async function ridePermissionTests(status, sql) {
   assert.equal((await ok(creator.db, "ride_offers", { p_from: args.p_ends_at, p_until: "2027-11-08T00:00:00Z" })).length, 0, "Half-open interval excludes completed interval at end boundary");
   await denied(creator.db, "ride_offers", { p_from: "2028-01-01Z", p_until: "2027-01-01Z" }, "PT400");
   await ok(other.db, "remove_family_member", { p_family_id: second, p_user_id: guardian.id });
+  const revokedRoutes = await routeRows(guardian.db);
+  assert.ifError(revokedRoutes.error);
+  assert.deepEqual(revokedRoutes.data, []);
+  await denied(guardian.db, "save_route", savedRoute, "PT404");
+  assert.equal((await routeRows(other.db)).data.length, 1);
   for (const table of tables) assert.deepEqual((await guardian.db.from(table).select("*")).data, [], `Removed guardian loses ${table}`);
   await denied(guardian.db, "respond_to_ride_invitation", { ...respond, p_revision: 7 }, "PT404");
   await ok(coordinator.db, "remove_circle_family", { p_circle_id: circle, p_family_id: second });

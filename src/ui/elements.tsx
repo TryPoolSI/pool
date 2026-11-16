@@ -516,7 +516,7 @@ export function Field({
         </Text>
       </Pressable>
     );
-  if (type === "date" || type === "datetime-local")
+  if (type === "date" || type === "time" || type === "datetime-local")
     return (
       <DateControl
         testID={name ? `field-${name}` : undefined}

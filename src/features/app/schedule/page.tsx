@@ -1,3 +1,4 @@
+import { useWindowDimensions } from "react-native";
 import * as UI from "@/ui/elements";
 import { createScreen } from "@/ui/remote";
 import Link from "@/ui/link";
@@ -6,6 +7,14 @@ import { colors, spacing, styles } from "@/ui/styles";
 import { createClient } from "@/lib/supabase/client";
 import { addDays, dateInZone, validTimezone, weekRange } from "@/lib/rides";
 import { RideList } from "../ride-list";
+
+const dayLabel = new Intl.DateTimeFormat("en", {
+  weekday: "long",
+  month: "long",
+  day: "numeric",
+  year: "numeric",
+  timeZone: "UTC",
+});
 async function loadSchedule({
   searchParams,
 }: {
@@ -46,6 +55,64 @@ async function loadSchedule({
     ...new Map(offers.data.map((ride) => [ride.id, ride])).values(),
   ];
   return { model: { range, zone, offers, statuses, weekLink, unique } };
+}
+
+function ScheduleDays({
+  monday,
+  zone,
+  rides,
+}: {
+  monday: string;
+  zone: string;
+  rides: { starts_at: string }[];
+}) {
+  const { width } = useWindowDimensions();
+  const today = dateInZone(new Date(), zone);
+  const counts = new Map<string, number>();
+  for (const ride of rides) {
+    const date = dateInZone(new Date(ride.starts_at), zone);
+    counts.set(date, (counts.get(date) ?? 0) + 1);
+  }
+
+  return (
+    <UI.Box>
+      <UI.Small>Choose a day to plan a ride</UI.Small>
+      <UI.Box className="week-strip" role="group" aria-label="Full week">
+        {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day, index) => {
+          const date = addDays(monday, index);
+          const count = counts.get(date) ?? 0;
+          const rideCount = `${count} ${count === 1 ? "ride" : "rides"}`;
+          const isToday = date === today;
+          const label = dayLabel.format(new Date(`${date}T00:00:00Z`));
+          return (
+            <Link
+              key={date}
+              href={`/app/rides/new?${new URLSearchParams({ date, timezone: zone })}`}
+              aria-label={`Plan a ride for ${label}, ${rideCount}`}
+              aria-current={isToday ? "date" : undefined}
+              style={[
+                { alignSelf: "stretch", backgroundColor: "transparent" },
+                width <= 650
+                  ? { flexBasis: "22%", flexGrow: 1, maxWidth: "25%" }
+                  : { flex: 1 },
+              ]}
+            >
+              <UI.Box className={`week-day${isToday ? " today" : ""}`}>
+                <UI.Inline>{day}</UI.Inline>
+                <UI.Strong>{Number(date.slice(-2))}</UI.Strong>
+                <UI.Small>{count ? rideCount : "—"}</UI.Small>
+                <Icon
+                  name="plus"
+                  size={16}
+                  color={isToday ? "white" : colors.green}
+                />
+              </UI.Box>
+            </Link>
+          );
+        })}
+      </UI.Box>
+    </UI.Box>
+  );
 }
 
 const Schedule = createScreen(
@@ -117,28 +184,7 @@ const Schedule = createScreen(
           </UI.Form>
         </ActionDialog>
       </UI.Box>
-      <UI.Box className="week-strip" role="group" aria-label="Full week">
-        {Array.from({ length: 7 }, (_, index) => {
-          const date = addDays(range.monday, index);
-          const count = unique.filter(
-            (ride) => dateInZone(new Date(ride.starts_at), zone) === date,
-          ).length;
-          return (
-            <UI.Box
-              className={`week-day${date === dateInZone(new Date(), zone) ? " today" : ""}`}
-              key={date}
-            >
-              <UI.Inline>
-                {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][index]}
-              </UI.Inline>
-              <UI.Strong>{Number(date.slice(-2))}</UI.Strong>
-              <UI.Small>
-                {count ? `${count} ${count === 1 ? "ride" : "rides"}` : "—"}
-              </UI.Small>
-            </UI.Box>
-          );
-        })}
-      </UI.Box>
+      <ScheduleDays monday={range.monday} zone={zone} rides={unique} />
       {offers.data.length ? (
         <RideList offers={offers.data} statuses={statuses.data} />
       ) : (
