@@ -1,4 +1,5 @@
-import Svg, { Path } from "react-native-svg";
+import { Image } from "react-native";
+import logoMark from "@/assets/logo-mark.png";
 import * as UI from "@/ui/elements";
 import Link from "@/ui/link";
 import { spacing } from "@/ui/styles";
@@ -6,20 +7,12 @@ import { spacing } from "@/ui/styles";
 export function Brand({ compact = false }: { compact?: boolean }) {
   return (
     <UI.Box className="brand" style={compact ? { gap: spacing.sm } : undefined}>
-      <Svg
+      <Image
+        source={logoMark}
+        accessibilityIgnoresInvertColors
         aria-hidden={true}
-        width={compact ? 19 : 26}
-        height={compact ? 21 : 29}
-        viewBox="0 0 26 29"
-        fill="none"
-      >
-        <Path
-          d="M4 23V8a5 5 0 0 1 10 0v15M12 23V8a5 5 0 0 1 10 0v15M2 27h22"
-          stroke="#253c35"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-        />
-      </Svg>
+        style={{ width: compact ? 34 : 48, height: compact ? 34 : 48 }}
+      />
       <UI.Strong
         style={{
           fontFamily: "Manrope",
