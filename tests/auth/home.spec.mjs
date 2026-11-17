@@ -171,6 +171,17 @@ test("Home shows joined rides without confirmed coverage across circles", async 
       ).toBeVisible();
       await expect(page.getByRole("link", { name: "North circle" })).toBeVisible();
       await expect(coverage).not.toContainText("No joined rides need a driver");
+
+      const offerDetailsUrl = "**/rest/v1/rpc/drive_offer_details";
+      await page.route(offerDetailsUrl, (route) =>
+        route.fulfill({
+          status: 404,
+          json: {
+            code: "PGRST202",
+            message: "Could not find the function in the schema cache",
+          },
+        }),
+      );
       await coverage
         .getByRole("button", { name: "Retry driver coverage" })
         .click();
@@ -192,6 +203,11 @@ test("Home shows joined rides without confirmed coverage across circles", async 
       ]);
       await expect(southRides).toContainText("Driver not confirmed");
       await expect(coverage.getByRole("listitem")).toHaveCount(3);
+      await expect(coverage.getByRole("alert")).toHaveCount(0);
+      await expect(
+        coverage.getByRole("button", { name: "I can drive" }),
+      ).toHaveCount(0);
+      await page.unroute(offerDetailsUrl);
       await expect(page.getByRole("link", { name: "Private circle" })).toHaveCount(
         0,
       );
@@ -219,6 +235,9 @@ test("Home shows joined rides without confirmed coverage across circles", async 
       ).toBe("confirmed");
       await page.getByRole("button", { name: "Refresh current data" }).click();
       await expect(southRides).toHaveCount(0);
+      await expect(
+        northRides.getByRole("button", { name: "I can drive" }),
+      ).toHaveCount(2);
 
       const [assignment] = await rpc(member, "driver_status", {
         p_ride_id: pending,

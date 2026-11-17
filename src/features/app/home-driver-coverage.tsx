@@ -69,9 +69,10 @@ async function loadDriverCoverage() {
       client.rpc("drive_offer_details", ids),
     ]);
     if (statuses.error) throw statuses.error;
-    if (offers.error) throw offers.error;
+    // Coverage can load before the database exposes offer-to-drive eligibility.
+    if (offers.error && offers.error.code !== "PGRST202") throw offers.error;
     for (const status of statuses.data) coverageByRide.set(status.ride_id, status);
-    for (const offer of offers.data) offersByRide.set(offer.ride_id, offer);
+    for (const offer of offers.data ?? []) offersByRide.set(offer.ride_id, offer);
   }
 
   let cars: OfferCar[] = [];
