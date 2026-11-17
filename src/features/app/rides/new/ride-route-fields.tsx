@@ -9,6 +9,9 @@ import { CommandForm } from "@/ui/command-form";
 import * as UI from "@/ui/elements";
 import { ActionDialog } from "../../presentation";
 
+// Hidden for live demos; set EXPO_PUBLIC_SHOW_SAVE_ROUTE=true to show it.
+const showSaveRoute = process.env.EXPO_PUBLIC_SHOW_SAVE_ROUTE === "true";
+
 const initialLocations: RouteLocations = {
   pickup_summary: "",
   destination_summary: "",
@@ -164,9 +167,11 @@ export function RideRouteFields({ familyId }: { familyId: string }) {
           />
         </UI.Label>
       </UI.Box>
-      <ActionDialog title="Save route" triggerStyle={{ alignSelf: "flex-start" }}>
-        <SaveRouteForm familyId={familyId} locations={locations} />
-      </ActionDialog>
+      {showSaveRoute ? (
+        <ActionDialog title="Save route" triggerStyle={{ alignSelf: "flex-start" }}>
+          <SaveRouteForm familyId={familyId} locations={locations} />
+        </ActionDialog>
+      ) : null}
     </UI.Box>
   );
 }

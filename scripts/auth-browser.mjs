@@ -375,6 +375,7 @@ try {
     EXPO_NO_DOTENV: "1",
     EXPO_PUBLIC_SUPABASE_URL: "http://localhost:55321",
     EXPO_PUBLIC_WEB_ORIGIN: "http://localhost:3100",
+    EXPO_PUBLIC_SHOW_SAVE_ROUTE: "true",
     EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY:
       status.PUBLISHABLE_KEY || status.ANON_KEY,
     SUPABASE_INTERNAL_URL: "",
