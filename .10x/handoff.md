@@ -1,7 +1,7 @@
 # Handoff
 
-**From:** EM + Senior Engineer → **To:** SDE. Follow tasks 1–9 in order.
+**From:** SDE → **To:** QA + Security
 
-- The design comes from the Impeccable critique (`.impeccable/critique/*page-tsx.md`), with user decisions recorded in the spec.
-- Read the spec's "Constraints" first. The journey tests in `tests/auth/home.spec.mjs` lock region, group, link and button names, the "Pickup: … GMT" format and the seat default.
-- The uncommitted draft code predates discovery. It drops the GMT offset and adds a second link per row, both of which violate the constraints. Revise it before committing.
+- What was built and the deviations: `.10x/decisions/sde/home-coverage-first.md`.
+- To test: the Home summary states (amber, green, waiting null/0/n), the coverage region in loading, error and empty states, Ride cards at 320/390/800/1280, the offer form focus round trip, and the covered-circle green state.
+- To review: the new RPC reads (`driver_inbox`, `trip_attention`) on Home, and the shared `CommandForm` render change.
