@@ -1,6 +1,6 @@
 # Status
 
-**Phase:** Strategy Complete
+**Phase:** Design Complete (ADR-001)
 **Feature:** home-coverage-first (branch `claude/home-coverage-first`)
 
 ## Progress
