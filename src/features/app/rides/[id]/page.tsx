@@ -76,9 +76,10 @@ async function loadRideDetail({
       early: (
         <>
           <PageHeading
-            eyebrow="Your driving"
             title={`${status.pickup_summary} → ${status.destination_summary}`}
-          />
+          >
+            You’re driving this ride
+          </PageHeading>
           <UI.Box className="ride-time">
             <UI.Paragraph>
               Pickup: {rideTime(status.starts_at, status.timezone)}
@@ -302,9 +303,10 @@ const RideDetail = createScreen(
   }) => (
     <>
       <PageHeading
-        eyebrow={offer.direction === "return" ? "Return ride" : "Outbound ride"}
         title={`${offer.pickup_summary} → ${offer.destination_summary}`}
-      />
+      >
+        {offer.direction === "return" ? "Return ride" : "Outbound ride"}
+      </PageHeading>
       <UI.Box className="ride-time">
         <UI.Paragraph>
           Pickup:{" "}
@@ -389,7 +391,6 @@ const RideDetail = createScreen(
       )}
       <UI.Box className="ride-overview">
         <UI.Section className="panel route-panel">
-          <UI.Paragraph className="eyebrow">THE RIDE PLAN</UI.Paragraph>
           <UI.Heading2>Pickup and destination</UI.Heading2>
           {locations.data ? (
             <RouteSummary

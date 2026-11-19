@@ -144,7 +144,7 @@ export const DriverPanel = createPanel(
       <UI.Box className="driver-summary">
         <Avatar name={status.driver_name} tone={candidate ? "rose" : "green"} />
         <UI.Box>
-          <UI.Inline className="eyebrow">
+          <UI.Inline className="meta-label">
             {status.cancelled_at
               ? "Previous proposal"
               : completed && status.current_proposal_id === status.proposal_id
