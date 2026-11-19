@@ -125,7 +125,8 @@ export function CommandForm({
           </Paragraph>
         )}
         {!pending && state.path && <Link href={state.path}>{resultLabel}</Link>}
-        {link && (
+        {/* `link` is "" without an invitation; never render a bare string in a View. */}
+        {link ? (
           <Box>
             <Label>
               Manual invitation link
@@ -148,7 +149,7 @@ export function CommandForm({
               shown once; create a replacement if lost.
             </Paragraph>
           </Box>
-        )}
+        ) : null}
       </OutcomeFocus>
     </Form>
   );

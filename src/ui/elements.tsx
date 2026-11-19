@@ -634,6 +634,7 @@ export function Button({
   const primary = type === "submit" || p.className?.includes("primary");
   return (
     <Pressable
+      nativeID={p.id}
       accessibilityRole="button"
       accessibilityLabel={p["aria-label"]}
       disabled={disabled || parent}
