@@ -23,6 +23,9 @@ const paths = {
   menu: "M4 6h16M4 12h16M4 18h16",
   close: "m6 6 12 12M18 6 6 18",
   info: "M12 11v6m0-10h.01M21 12a9 9 0 1 0-18 0 9 9 0 0 0 18 0",
+  dot: "M12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Z",
+  ring: "M12 6a6 6 0 1 0 0 12 6 6 0 0 0 0-12Z",
+  flag: "M6 21V4h11l-2.5 4L17 12H6",
 };
 export function Icon({
   name,
