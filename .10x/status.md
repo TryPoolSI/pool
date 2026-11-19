@@ -1,6 +1,6 @@
 # Status
 
-**Phase:** Delivery docs complete. PR open; merge gated on CI checks
+**Phase:** sitewide-home-patterns: spec + ADR-002 + plan written; implementing
 **Feature:** home-coverage-first (branch `claude/home-coverage-first`)
 
 ## Progress
@@ -15,3 +15,9 @@
 
 ## Blockers
 - Local Node is 20 (project pins 24). `npm run test:auth` may not run locally; it runs in CI.
+
+## sitewide-home-patterns
+- [x] Spec `.10x/specs/2026-11-18-sitewide-home-patterns-design.md` (user approved items 1–5)
+- [x] ADR-002, architect, EM plan
+- [ ] Implementation
+- [ ] Verification
