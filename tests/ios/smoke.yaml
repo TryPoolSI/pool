@@ -11,9 +11,10 @@ appId: dev.pool.prototype
 - tapOn:
     text: "^Open$"
     optional: true
+# The hosted simulator can take over a minute to deliver an approved link.
 - extendedWaitUntil:
     visible: Create your Pool account
-    timeout: 60000
+    timeout: 120000
 - assertVisible: Email address
 - assertVisible: Password
 - assertVisible: I am at least 18 years old.
@@ -30,4 +31,4 @@ appId: dev.pool.prototype
     optional: true
 - extendedWaitUntil:
     visible: Sign in to Pool
-    timeout: 60000
+    timeout: 120000
