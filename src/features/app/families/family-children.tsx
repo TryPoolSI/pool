@@ -131,21 +131,26 @@ export function FamilyChildren({
           <UI.Heading3>Add a child</UI.Heading3>
           <AddChildForm familyId={familyId} />
           {roster.data.length ? (
-            <UI.Box className="people-grid">
+            // Rows, not cards: this roster already sits inside the Children panel.
+            <UI.Box style={{ marginTop: 8 }}>
               {roster.data.map((child) => (
-                <UI.Section
-                  className="person-card"
+                <UI.Box
+                  className="child-row"
                   key={child.id}
                   role="group"
                   aria-label={child.display_name}
                 >
                   <Avatar name={child.display_name} />
-                  <UI.Heading3>{child.display_name}</UI.Heading3>
-                  <UI.Paragraph>
-                    {seatRequirements[
-                      child.seat_requirement as keyof typeof seatRequirements
-                    ]}
-                  </UI.Paragraph>
+                  <UI.Box style={{ flex: 1, minWidth: 140 }}>
+                    <UI.Heading3 style={{ marginTop: 0, marginBottom: 0 }}>
+                      {child.display_name}
+                    </UI.Heading3>
+                    <UI.Paragraph style={{ marginVertical: 0 }}>
+                      {seatRequirements[
+                        child.seat_requirement as keyof typeof seatRequirements
+                      ]}
+                    </UI.Paragraph>
+                  </UI.Box>
                   <ActionDialog title={`Edit ${child.display_name}`}>
                     <UI.Paragraph>
                       Changes apply to future enrollment. Re-save riders on an
@@ -153,7 +158,7 @@ export function FamilyChildren({
                     </UI.Paragraph>
                     <EditChildForm familyId={familyId} child={child} />
                   </ActionDialog>
-                </UI.Section>
+                </UI.Box>
               ))}
             </UI.Box>
           ) : (
