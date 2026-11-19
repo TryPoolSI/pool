@@ -51,6 +51,11 @@ export function zonedInstant(local: string, zone: string, occurrence = "reject")
 export function rideTime(instant: string, zone: string) {
   return new Intl.DateTimeFormat("en-US", { timeZone: zone, year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "shortOffset" }).format(new Date(instant));
 }
+// Scannable variant for cards ("Thu, Nov 19, 7:40 AM GMT-5"): drops the year
+// but always keeps the ride's own UTC offset.
+export function rideTimeShort(instant: string, zone: string) {
+  return new Intl.DateTimeFormat("en-US", { timeZone: zone, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "shortOffset" }).format(new Date(instant));
+}
 export function dateInZone(instant: Date, zone: string) {
   const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: validTimezone(zone), year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(instant).map((part) => [part.type, part.value]));
   return `${parts.year}-${parts.month}-${parts.day}`;

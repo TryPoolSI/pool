@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { zonedInstant, weekRange, dateInZone, localDate } from "../src/lib/rides.ts";
+import { zonedInstant, weekRange, dateInZone, localDate, rideTimeShort } from "../src/lib/rides.ts";
 test("ride wall times reject calendar errors and nonexistent spring times", () => {
   for (const value of ["2027-02-29", "2026-04-31", "2026-13-01", "bad"]) assert.throws(() => localDate(value));
   for (const value of ["2027-03-14T02:30", "2027-03-14T24:00", "2027-02-30T09:00"]) assert.throws(() => zonedInstant(value, "America/Denver"));
@@ -37,4 +37,9 @@ test("calendar weeks include dates with skipped Monday midnight in both adjacent
   assert.equal(after.until, "2021-03-28T19:30:00.000Z");
   // Calendar range resolution must never relax validation of entered ride times.
   for (const occurrence of ["reject", "earlier", "later"]) assert.throws(() => zonedInstant("2021-03-22T00:00", "Asia/Tehran", occurrence), /does not exist/);
+});
+test("short ride times drop the year but keep the ride's own UTC offset", () => {
+  assert.equal(rideTimeShort("2026-11-19T12:40:00.000Z", "America/New_York"), "Thu, Nov 19, 7:40 AM GMT-5");
+  assert.equal(rideTimeShort("2026-07-02T12:40:00.000Z", "America/New_York"), "Thu, Jul 2, 8:40 AM GMT-4");
+  assert.equal(rideTimeShort("2027-01-01T00:15:00.000Z", "Asia/Kathmandu"), "Fri, Jan 1, 6:00 AM GMT+5:45");
 });

@@ -38,15 +38,17 @@ function HomeContent({ circles }: { circles: { id: string; name: string }[] }) {
   return (
     <>
       <PageHeading
-        eyebrow="SHARE THE DRIVING"
         title="Home"
         action={
-          <Link className="button secondary" href="/app/attention">
-            Today’s rides
-            <Icon name="arrow-right" size={16} />
+          <Link className="button secondary" href="/app/rides/new">
+            <Icon name="plus" size={16} />
+            Plan a ride
           </Link>
         }
-      />
+      >
+        {family?.name}
+      </PageHeading>
+      {circles.length > 0 && <HomeDriverCoverage circles={circles} />}
       <UI.Box className="dashboard-grid">
         {family && (
           <UI.Section className="panel">
@@ -84,19 +86,6 @@ function HomeContent({ circles }: { circles: { id: string; name: string }[] }) {
             <Icon name="arrow-right" size={16} color={colors.green} />
           </Link>
         </UI.Section>
-      </UI.Box>
-      {circles.length > 0 && <HomeDriverCoverage circles={circles} />}
-      <UI.Box className="setup-cards">
-        <Link href="/app/vehicles" aria-label="Your vehicles">
-          <UI.Box className="team-icon">
-            <Icon name="car" />
-          </UI.Box>
-          <UI.Box>
-            <UI.Strong>Your vehicles</UI.Strong>
-            <UI.Small>Registered passenger capacity</UI.Small>
-          </UI.Box>
-          <Icon name="chevron-right" size={16} />
-        </Link>
       </UI.Box>
     </>
   );

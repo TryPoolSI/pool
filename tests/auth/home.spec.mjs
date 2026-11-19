@@ -234,7 +234,8 @@ test("Home shows joined rides without confirmed coverage across circles", async 
         }),
       ).toBe("confirmed");
       await page.getByRole("button", { name: "Refresh current data" }).click();
-      await expect(southRides).toHaveCount(0);
+      await expect(southRides.getByRole("listitem")).toHaveCount(0);
+      await expect(southRides).toContainText("Your joined ride has a driver");
       await expect(
         northRides.getByRole("button", { name: "I can drive" }),
       ).toHaveCount(2);
@@ -255,7 +256,8 @@ test("Home shows joined rides without confirmed coverage across circles", async 
       });
       await page.reload();
       await expect(northRides.getByRole("link")).toHaveCount(2);
-      await expect(southRides).toHaveCount(0);
+      await expect(southRides.getByRole("listitem")).toHaveCount(0);
+      await expect(southRides).toContainText("Your joined ride has a driver");
     } finally {
       await other.context.close();
     }
