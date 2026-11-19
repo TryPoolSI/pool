@@ -1,6 +1,6 @@
 # Status
 
-**Phase:** Design Complete (ADR-001)
+**Phase:** Planning Complete. Tasks 1–9 in decisions/engineering-manager/home-coverage-first.md
 **Feature:** home-coverage-first (branch `claude/home-coverage-first`)
 
 ## Progress
