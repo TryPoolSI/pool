@@ -1,6 +1,6 @@
 # Status
 
-**Phase:** Phase 0 complete. Spec approved 2026-11-18 (covered circles show green state)
+**Phase:** Strategy Complete
 **Feature:** home-coverage-first (branch `claude/home-coverage-first`)
 
 ## Progress
