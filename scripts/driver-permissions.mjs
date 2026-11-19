@@ -107,6 +107,11 @@ export async function driverPermissionTests(status,sql) {
   const minimal=await state(r,d.db);
   assert.equal(minimal.rider_count,3);assert.equal(minimal.booster_count,3);
   assert.ok(!JSON.stringify(minimal).includes(ca));assert.ok(!JSON.stringify(minimal).includes("Secret Place"));
+  await denied(anon,"pending_family_consents",{});
+  const pendingConsents = async (db) => (await ok(db,"pending_family_consents",{})).map(({ride_id}) => ride_id);
+  assert.deepEqual(await pendingConsents(b.db),[r.ride],"Guardian sees consent before the driver replies");
+  assert.deepEqual(await pendingConsents(d.db),[],"Driver-only access does not grant a consent task");
+  assert.deepEqual(await pendingConsents(outsider.db),[]);
   await denied(a.db,"accept_driver_proposal",{...p,p_available_seats:4,p_restraints:true},"PT404");
   await denied(d.db,"accept_driver_proposal",{...p,p_available_seats:2,p_restraints:true},"PT422");
   await denied(d.db,"accept_driver_proposal",{...p,p_available_seats:5,p_restraints:true},"PT422");
@@ -123,10 +128,13 @@ export async function driverPermissionTests(status,sql) {
   await ok(a.db,"consent_for_own_children",{...p,p_family_id:fa,p_child_ids:[ca]});
   await ok(b.db,"consent_for_own_children",{...p,p_family_id:fb,p_child_ids:[cb]});
   assert.equal((await state(r)).coverage,"awaiting_confirmation","One missing child consent prevents confirmation");
+  assert.deepEqual(await pendingConsents(a.db),[],"Another family's missing consent does not count");
+  assert.deepEqual(await pendingConsents(g.db),[r.ride],"Any guardian of the child can supply the missing consent");
   const last={...p,p_family_id:fb,p_child_ids:[cb2]};
   const final=await Promise.all([b.db.rpc("consent_for_own_children",last),g.db.rpc("consent_for_own_children",last),d.db.rpc("accept_driver_proposal",{...p,p_available_seats:4,p_restraints:true})]);
   final.forEach(x=>assert.ifError(x.error));
   assert.equal(final[0].data,"confirmed");assert.equal(final[1].data,"confirmed");assert.ok(["awaiting_confirmation","confirmed"].includes(final[2].data));
+  assert.deepEqual(await pendingConsents(b.db),[],"Recorded consent clears the task");
   assert.equal(sql(`select count(*) from public.driver_assignments where ride_id='${r.ride}' and released_at is null`),"1");
   assert.equal((await d.db.from("ride_locations").select("*").eq("ride_id",r.ride)).data.length,1);
   assert.deepEqual((await d.db.from("children").select("*").eq("family_id",fa)).data,[]);
