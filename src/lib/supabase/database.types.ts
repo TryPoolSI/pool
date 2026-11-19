@@ -664,6 +664,11 @@ isOneToOne: false
               "ride_id": string
             }[]
                            },
+"pending_handoff_receipts":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "ride_id": string
+            }[]
+                           },
 "propose_driver":
 { Args: { "p_driver_family_id": string,"p_driver_id": string,"p_family_id": string,"p_id": string,"p_revision": number,"p_ride_id": string,"p_vehicle_id": string,"p_vehicle_version": number }; Returns: string
                            },

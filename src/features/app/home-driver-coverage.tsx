@@ -37,16 +37,16 @@ type UncoveredRide = CoverageRide & {
 // account. Attention owns the full list; Home only counts them. A failure here
 // must not hide coverage, so it degrades to "unknown" (null).
 async function loadWaiting(client: ReturnType<typeof createClient>) {
-  const [inbox, consents, trips] = await Promise.all([
+  const [inbox, consents, receipts] = await Promise.all([
     client.rpc("driver_inbox", { p_pending_only: true, p_limit: 26 }),
     client.rpc("pending_family_consents").limit(26),
-    client.rpc("trip_attention", { p_limit: 26 }),
+    client.rpc("pending_handoff_receipts").limit(26),
   ]);
-  if (inbox.error || consents.error || trips.error) return null;
+  if (inbox.error || consents.error || receipts.error) return null;
   return new Set([
     ...inbox.data.map((item) => item.ride_id),
     ...consents.data.map((item) => item.ride_id),
-    ...trips.data.map((item) => item.ride_id),
+    ...receipts.data.map((item) => item.ride_id),
   ]).size;
 }
 
