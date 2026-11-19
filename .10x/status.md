@@ -1,6 +1,6 @@
 # Status
 
-**Phase:** Implementation Complete
+**Phase:** Verification Complete. Release gate: CI test:auth
 **Feature:** home-coverage-first (branch `claude/home-coverage-first`)
 
 ## Progress
@@ -10,7 +10,7 @@
 - [x] ADR-001, architect, staff-engineer
 - [x] Plan (EM + senior engineer)
 - [x] Implementation (commits 76f4de6, dd4ad52, 635a125)
-- [ ] QA + security
+- [x] QA + security (reviews/2026-11-18-*)
 - [ ] PR
 
 ## Blockers
