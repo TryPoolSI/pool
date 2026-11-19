@@ -1,6 +1,6 @@
 # Status
 
-**Phase:** sitewide-home-patterns: spec + ADR-002 + plan written; implementing
+**Phase:** sitewide-home-patterns verified locally; pushed to PR #63, CI pending
 **Feature:** home-coverage-first (branch `claude/home-coverage-first`)
 
 ## Progress
@@ -19,5 +19,5 @@
 ## sitewide-home-patterns
 - [x] Spec `.10x/specs/2026-11-18-sitewide-home-patterns-design.md` (user approved items 1–5)
 - [x] ADR-002, architect, EM plan
-- [ ] Implementation
-- [ ] Verification
+- [x] Implementation (8ec8da4, d161326, db92cf7, ad6f20d)
+- [x] Verification (reviews/2026-11-18-sitewide-qa-report.md); CI pending on push
