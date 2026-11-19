@@ -1,6 +1,6 @@
 # Status
 
-**Phase:** sitewide-home-patterns verified locally; pushed to PR #63, CI pending
+**Phase:** Delivered for review. PR #63 CI green on b0965ea; Lance requested; team notified in #all-pool-cu-boulder
 **Feature:** home-coverage-first (branch `claude/home-coverage-first`)
 
 ## Progress
