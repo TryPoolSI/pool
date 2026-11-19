@@ -1,6 +1,6 @@
 # Status
 
-**Phase:** Verification Complete. Release gate: CI test:auth
+**Phase:** Delivery docs complete. PR open; merge gated on CI checks
 **Feature:** home-coverage-first (branch `claude/home-coverage-first`)
 
 ## Progress
