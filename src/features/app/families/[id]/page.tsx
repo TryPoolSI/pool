@@ -45,12 +45,12 @@ const FamilyPage = createScreen(
     <>
       <PageHeading title={family.name} />
       <FamilyVehicleSetup
-        key={`${user.id}:${id}`}
+        key={`vehicles:${user.id}:${id}`}
         userId={user.id}
         familyId={id}
       />
       <FamilyChildren
-        key={`${user.id}:${id}`}
+        key={`children:${user.id}:${id}`}
         userId={user.id}
         familyId={id}
       />

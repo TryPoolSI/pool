@@ -1,8 +1,11 @@
 export function followAnchor(id: string) {
   const element = document.getElementById(id);
-  if (element) element.tabIndex = -1;
-  element?.scrollIntoView({ block: "start" });
-  element?.focus();
+  if (!element) return;
+  if (element.tabIndex < 0 && !element.hasAttribute("tabindex")) {
+    element.tabIndex = -1;
+  }
+  element.scrollIntoView({ block: "start" });
+  element.focus();
 }
 export function captureFocus() {
   const element = document.activeElement as HTMLElement | null;

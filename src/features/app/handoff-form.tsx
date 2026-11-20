@@ -6,17 +6,20 @@ export function HandoffForm({
   fields = {},
   label,
   children,
+  secondary = false,
 }: {
   command: string;
   fields?: Record<string, string>;
   label: string;
   children?: React.ReactNode;
+  secondary?: boolean;
 }) {
   return (
     <CommandForm
       action={(values) => handoffAction({}, values)}
       fields={{ command, ...fields }}
       label={label}
+      secondary={secondary}
       focusTarget={`journey-${fields.ride_id}-${fields.child_id}`}
       onResult={(result) => {
         if (!result.error)

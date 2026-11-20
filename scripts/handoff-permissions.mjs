@@ -79,6 +79,8 @@ export async function handoffUpgradeIdentity(status) {
 }
 export async function handoffPermissionTests(status,sql) {
   const {a,b,d,out,bGuardian,driverGuardian,children:[ca,cb],circle,car,confirmed,anon}=await setup(status);
+  const pendingReceipts = async (db) => (await ok(db,"pending_handoff_receipts",{})).map(({ride_id}) => ride_id);
+  await denied(anon,"pending_handoff_receipts",{});
   const r=await confirmed();
   const nextRide=await confirmed({two:false});
   await ok(a.db,"designate_recipient",designation(nextRide,ca,a.id));
@@ -92,6 +94,7 @@ export async function handoffPermissionTests(status,sql) {
   await denied(d.db,"record_pickup",command(r,ca,1),"PT422");
   assert.equal(sql(`select count(*) from public.ride_trips where ride_id='${r.ride}'`),"0","Missing recipient prevents every pickup and event");
   await ok(b.db,"designate_recipient",db);
+  assert.deepEqual(await pendingReceipts(a.db),[],"Designated guardians have no receipt due before pickup");
   await denied(a.db,"confirm_handoff",command(r,ca,1),"PT409");
   await denied(d.db,"report_arrival",command(r,ca,1),"PT409");
   for(const actor of [a,b,bGuardian,out]) await denied(actor.db,"record_pickup",command(r,ca,1));
@@ -128,6 +131,7 @@ export async function handoffPermissionTests(status,sql) {
   await denied(d.db,"record_pickup",command(nextRide,ca,1),"PT424");
   assert.equal(sql(`select count(*) from public.ride_trips where ride_id='${nextRide.ride}'`),"0","Adjacent planned interval cannot start while an actual trip is unfinished");
   const pickupB=command(r,cb,1);await ok(d.db,"record_pickup",pickupB);
+  assert.deepEqual(await pendingReceipts(b.db),[],"Pickup alone does not make a receipt due");
   await denied(d.db,"report_arrival",{...command(r,cb,2),p_request_id:pickupA.p_request_id},"PT409");
   await denied(d.db,"report_arrival",command(r,ca,1),"PT409");
   await denied(b.db,"report_arrival",command(r,ca,2),"PT404");
@@ -140,6 +144,8 @@ export async function handoffPermissionTests(status,sql) {
   assert.equal(history.data.length,4);assert.ok(history.data.every(e=>e.actor_id===d.id && e.actor_name==="R6 driver" && Number.isFinite(Date.parse(e.occurred_at))));
   assert.deepEqual(await ok(out.db,"trip_attention",{}),[]);
   assert.ok((await ok(b.db,"trip_attention",{})).some(t=>t.ride_id===r.ride && t.awaiting_count===2));
+  assert.deepEqual(await pendingReceipts(b.db),[r.ride],"Arrival makes a receipt due for the designated guardian");
+  for (const actor of [d,bGuardian,out]) assert.deepEqual(await pendingReceipts(actor.db),[]);
   // Ordinary changes cannot erase responsibility, including a different child still scheduled.
   for (const [who,name,args] of [
     [a,"cancel_ride",{p_ride_id:r.ride,p_family_id:a.family,p_revision:r.revision}],
@@ -154,8 +160,11 @@ export async function handoffPermissionTests(status,sql) {
   const receipts=await Promise.all([a.db.rpc("confirm_handoff",receiptA),a.db.rpc("confirm_handoff",{...receiptA,p_request_id:crypto.randomUUID()})]);receipts.forEach(x=>assert.ifError(x.error));
   assert.equal(sql(`select count(*) from public.ride_events where ride_id='${r.ride}' and kind='completed'`),"1");
   assert.equal(sql(`select status from public.ride_handoffs where ride_id='${r.ride}' and child_id='${cb}'`),"awaiting_handoff");
+  assert.deepEqual(await pendingReceipts(a.db),[],"My receipt clears even if another guardian still owes theirs");
+  assert.deepEqual(await pendingReceipts(b.db),[r.ride]);
   assert.equal(sql(`select completed_at is null from public.ride_trips where ride_id='${r.ride}'`),"t");
   await ok(b.db,"confirm_handoff",receiptB);
+  assert.deepEqual(await pendingReceipts(b.db),[]);
   assert.equal(sql(`select completed_at is not null from public.ride_trips where ride_id='${r.ride}'`),"t");
   assert.equal(sql(`select release_reason from public.driver_assignments where ride_id='${r.ride}'`),"completed");
   assert.equal((await ok(a.db,"driver_status",{p_ride_id:r.ride}))[0].coverage,"confirmed");

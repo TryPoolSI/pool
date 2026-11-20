@@ -4,7 +4,7 @@ import { createPanel } from "@/ui/remote";
 import { createClient } from "@/lib/supabase/client";
 import Link from "@/ui/link";
 import { Avatar, Icon, RouteSummary, StatusBadge } from "./presentation";
-import { rideTime, type RideOffer } from "@/lib/rides";
+import { rideTimeShort, type RideOffer } from "@/lib/rides";
 import { coverageLabel, type DriverStatus } from "@/lib/drivers";
 
 async function loadRideList({
@@ -103,10 +103,10 @@ export const RideList = createPanel(
                   </Link>
                   <UI.Small>
                     {ride.direction === "return" ? "Return" : "Outbound"} ·
-                    Pickup: {rideTime(ride.starts_at, ride.timezone)}
+                    Pickup: {rideTimeShort(ride.starts_at, ride.timezone)}
                   </UI.Small>
                   <UI.Small>
-                    Drop-off: {rideTime(ride.ends_at, ride.timezone)}
+                    Drop-off: {rideTimeShort(ride.ends_at, ride.timezone)}
                   </UI.Small>
                 </UI.Box>
               </UI.Box>
@@ -135,7 +135,7 @@ export const RideList = createPanel(
                         : " · Uncovered until replacement confirms")}
                   </UI.Paragraph>
                   <UI.Paragraph>
-                    Reply by {rideTime(status.deadline, status.timezone)}
+                    Reply by {rideTimeShort(status.deadline, status.timezone)}
                   </UI.Paragraph>
                 </>
               )}

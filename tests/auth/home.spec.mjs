@@ -234,7 +234,8 @@ test("Home shows joined rides without confirmed coverage across circles", async 
         }),
       ).toBe("confirmed");
       await page.getByRole("button", { name: "Refresh current data" }).click();
-      await expect(southRides).toHaveCount(0);
+      await expect(southRides.getByRole("listitem")).toHaveCount(0);
+      await expect(southRides).toContainText("Your joined ride has a driver");
       await expect(
         northRides.getByRole("button", { name: "I can drive" }),
       ).toHaveCount(2);
@@ -255,7 +256,8 @@ test("Home shows joined rides without confirmed coverage across circles", async 
       });
       await page.reload();
       await expect(northRides.getByRole("link")).toHaveCount(2);
-      await expect(southRides).toHaveCount(0);
+      await expect(southRides.getByRole("listitem")).toHaveCount(0);
+      await expect(southRides).toContainText("Your joined ride has a driver");
     } finally {
       await other.context.close();
     }
@@ -351,6 +353,13 @@ test("Home offers driving with one acceptance and separate guardian approval", a
 
     await driver.page.goto("/app");
     const twoRiders = await openOffer(driver, "Two-rider pickup");
+    const offerTrigger = twoRiders.getByRole("button", { name: "I can drive" });
+    await twoRiders.getByRole("button", { name: "Cancel", exact: true }).press("Enter");
+    await expect(offerTrigger).toBeFocused();
+    await twoRiders.getByRole("link", { name: "Two-rider pickup → Practice" }).focus();
+    await driver.page.keyboard.press("Tab");
+    await expect(offerTrigger).toBeFocused();
+    await driver.page.keyboard.press("Enter");
     await expect(twoRiders).toContainText("2 riders need seats.");
     await expect(twoRiders).toContainText("1 booster seat · 1 child seat");
     await expect(twoRiders.getByRole("option", { name: /One-seat car/ })).toHaveCount(0);

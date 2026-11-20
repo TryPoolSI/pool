@@ -250,21 +250,13 @@ export function ApplicationShell({ children }: { children: ReactNode }) {
             </View>
             <NavigationLinks />
             {setupLinks}
-            <Text
-              style={[
-                styles.text,
-                {
-                  color: colors.green,
-                  marginTop: "auto",
-                  paddingTop: 30,
-                  paddingBottom: 24,
-                  borderBottomWidth: 1,
-                  borderColor: colors.line,
-                },
-              ]}
-            >
-              A little coordination.{"\n"}A lot of peace of mind.
-            </Text>
+            <View
+              style={{
+                marginTop: "auto",
+                borderTopWidth: 1,
+                borderColor: colors.line,
+              }}
+            />
             <Link href="/app/rides/new" className="text-link">
               <Icon name="plus" size={16} color={colors.green} />
               Plan a ride
@@ -389,23 +381,12 @@ export function ApplicationShell({ children }: { children: ReactNode }) {
                 }}
               >
                 {children}
-                <View style={{ marginTop: 24 }}>
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={() =>
-                      queryClient.invalidateQueries({ queryKey: ["account"] })
-                    }
-                    style={styles.button}
-                  >
-                    <Text style={[styles.text, styles.buttonText]}>
-                      Refresh current data
-                    </Text>
-                  </Pressable>
-                </View>
                 <View
                   style={{
                     flexDirection: "row",
+                    flexWrap: "wrap",
                     alignItems: "center",
+                    justifyContent: "space-between",
                     gap: 13,
                     marginTop: 40,
                     paddingVertical: 25,
@@ -425,11 +406,23 @@ export function ApplicationShell({ children }: { children: ReactNode }) {
                   >
                     pool.
                   </Text>
-                  <Text
-                    style={[styles.text, { fontSize: 12, color: colors.muted }]}
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() =>
+                      queryClient.invalidateQueries({ queryKey: ["account"] })
+                    }
+                    style={[styles.button, styles.plainIconButton]}
                   >
-                    A smoother ride for every family.
-                  </Text>
+                    <Text
+                      style={[
+                        styles.text,
+                        styles.buttonText,
+                        { color: colors.muted, fontWeight: "500" },
+                      ]}
+                    >
+                      Refresh current data
+                    </Text>
+                  </Pressable>
                 </View>
               </View>
             </ScrollView>

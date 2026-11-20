@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { newRequestId } from "@/lib/request-id";
 import type { Database } from "@/lib/supabase/database.types";
 import { driverAction } from "@/services/driver-actions";
 import { CommandForm } from "@/ui/command-form";
 import * as UI from "@/ui/elements";
+import { followAnchor } from "@/ui/platform";
 
 export type OfferDetails =
   Database["public"]["Functions"]["drive_offer_details"]["Returns"][number];
@@ -16,24 +17,50 @@ export function HomeDriverOffer({
   details,
   familyId,
   cars,
+  rideLabel,
+  primary = false,
 }: {
   details?: OfferDetails;
   familyId: string;
   cars: OfferCar[];
+  rideLabel: string;
+  primary?: boolean;
 }) {
   const [draft, setDraft] = useState<{
     details: OfferDetails;
     familyId: string;
     cars: OfferCar[];
   } | null>(null);
+  // Only move focus after the user opened or closed the form, never on load.
+  const returnFocus = useRef(false);
   const eligible = details
     ? cars.filter((car) => car.passenger_seats >= details.rider_count)
     : [];
+  const triggerId = details ? `offer-${details.ride_id}` : undefined;
 
-  if (draft) return <OfferForm {...draft} onClose={() => setDraft(null)} />;
+  useEffect(() => {
+    if (!draft && returnFocus.current && triggerId) {
+      returnFocus.current = false;
+      followAnchor(triggerId);
+    }
+  }, [draft, triggerId]);
+
+  if (draft)
+    return (
+      <OfferForm
+        {...draft}
+        rideLabel={rideLabel}
+        onClose={() => {
+          returnFocus.current = true;
+          setDraft(null);
+        }}
+      />
+    );
   if (!details || !eligible.length) return null;
   return (
     <UI.Button
+      id={triggerId}
+      className={primary ? "primary" : undefined}
       onPress={() => setDraft({ details, familyId, cars: eligible })}
     >
       I can drive
@@ -45,28 +72,38 @@ function OfferForm({
   details,
   familyId,
   cars,
+  rideLabel,
   onClose,
 }: {
   details: OfferDetails;
   familyId: string;
   cars: OfferCar[];
+  rideLabel: string;
   onClose: () => void;
 }) {
   const [requestId] = useState(newRequestId);
   const [car, setCar] = useState(cars[0]);
+  const headingId = `offer-heading-${details.ride_id}`;
   const {
     rider_count: riders,
     booster_count: boosters,
     child_seat_count: childSeats,
   } = details;
+
+  useEffect(() => {
+    followAnchor(headingId);
+  }, [headingId]);
+
   return (
-    <UI.Box>
+    <UI.Box className="offer-form">
+      <UI.Heading3 id={headingId} style={{ marginTop: 0 }}>
+        {`Offer to drive · ${rideLabel}`}
+      </UI.Heading3>
       <UI.Paragraph>
         {riders === 1 ? "1 rider needs a seat." : `${riders} riders need seats.`}
       </UI.Paragraph>
       <UI.Paragraph>
-        Required restraints: {boosters} booster {boosters === 1 ? "seat" : "seats"}
-        {" · "}{childSeats} child {childSeats === 1 ? "seat" : "seats"}
+        {`Required restraints: ${boosters} booster ${boosters === 1 ? "seat" : "seats"} · ${childSeats} child ${childSeats === 1 ? "seat" : "seats"}`}
       </UI.Paragraph>
       <CommandForm
         action={(fields) => driverAction({}, fields)}
@@ -99,7 +136,7 @@ function OfferForm({
           >
             {cars.map((option) => (
               <UI.Option key={option.id} value={option.id}>
-                {option.label} · {option.passenger_seats} passenger seats
+                {`${option.label} · ${option.passenger_seats} passenger seats`}
               </UI.Option>
             ))}
           </UI.Select>
@@ -121,8 +158,12 @@ function OfferForm({
           <UI.Field type="checkbox" name="restraints" value="yes" required />
           I can accommodate the required restraints for every rider.
         </UI.Label>
+        <UI.Small>
+          Once you offer, each family on this ride approves you for their own
+          children. The ride is covered when every family has approved.
+        </UI.Small>
       </CommandForm>
-      <UI.Button onPress={onClose}>Close offer form</UI.Button>
+      <UI.Button onPress={onClose}>Cancel</UI.Button>
     </UI.Box>
   );
 }

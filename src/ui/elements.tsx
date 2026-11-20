@@ -631,9 +631,12 @@ export function Button({
 }: ElementProps & { type?: string; disabled?: boolean; autoFocus?: boolean }) {
   const form = useContext(FormState),
     parent = useContext(Disabled);
-  const primary = type === "submit" || p.className?.includes("primary");
+  const primary =
+    !p.className?.includes("secondary") &&
+    (type === "submit" || Boolean(p.className?.includes("primary")));
   return (
     <Pressable
+      nativeID={p.id}
       accessibilityRole="button"
       accessibilityLabel={p["aria-label"]}
       disabled={disabled || parent}

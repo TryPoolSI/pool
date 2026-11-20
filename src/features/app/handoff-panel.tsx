@@ -215,6 +215,7 @@ export const HandoffPanel = createPanel(
                       command="designateRecipient"
                       fields={fields}
                       label="Save designated guardian"
+                      secondary
                     >
                       <UI.Label>
                         Designated guardian for {rider.display_name}

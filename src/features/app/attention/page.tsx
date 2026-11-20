@@ -128,7 +128,6 @@ const Attention = createScreen(
   }) => (
     <>
       <PageHeading
-        eyebrow="YOUR FAMILY, IN THE LOOP"
         title={
           featured?.awaiting_count
             ? "A handoff needs your attention."
@@ -151,12 +150,6 @@ const Attention = createScreen(
         <UI.Box className="ride-overview trip-feature">
           <UI.Section className="panel">
             <UI.Box className="section-head">
-              <UI.Paragraph
-                className="eyebrow"
-                style={{ marginBottom: 0, marginTop: 0 }}
-              >
-                CURRENT RIDE
-              </UI.Paragraph>
               <StatusBadge
                 tone={featured.awaiting_count ? "attention" : "positive"}
               >
@@ -226,7 +219,8 @@ const Attention = createScreen(
           </UI.Box>
         </UI.Box>
       )}
-      <UI.Section className="attention-tasks">
+      {/* Plain container: its task and ride cards are panels themselves. */}
+      <UI.Box className="attention-tasks" style={{ marginVertical: spacing.lg }}>
         <UI.Box className="section-head">
           <UI.Heading2 aria-label="Needs attention" style={{ marginBottom: 0 }}>
             Needs attention{" "}
@@ -338,16 +332,11 @@ const Attention = createScreen(
             Open your schedule to review other weeks.
           </EmptyState>
         )}
-      </UI.Section>
+      </UI.Box>
       {!!upcoming.length && (
         <>
           <UI.Box className="section-head">
-            <UI.Box>
-              <UI.Paragraph className="eyebrow">
-                A LITTLE PLANNING GOES A LONG WAY
-              </UI.Paragraph>
-              <UI.Heading2 style={{ marginBottom: 0 }}>Coming up</UI.Heading2>
-            </UI.Box>
+            <UI.Heading2 style={{ marginBottom: 0 }}>Coming up</UI.Heading2>
             <Link className="text-link" href="/app/schedule">
               View the week →
             </Link>

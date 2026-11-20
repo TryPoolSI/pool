@@ -29,6 +29,7 @@ export function CommandForm({
   focusTarget,
   resetOnSuccess = false,
   renderMessage,
+  secondary = false,
 }: {
   action: (fields: CommandInput) => Promise<MembershipState | void>;
   fields?: CommandInput;
@@ -41,6 +42,8 @@ export function CommandForm({
   onResult?: (result: MembershipState) => void;
   resetOnSuccess?: boolean;
   renderMessage?: (message: string) => ReactNode;
+  // Lower-emphasis submit for pages that already have a primary action (ADR-002).
+  secondary?: boolean;
 }) {
   const [state, setState] = useState<MembershipState>({}),
     [pending, setPending] = useState(false),
@@ -112,7 +115,9 @@ export function CommandForm({
         ) : (
           children
         )}
-        <Button type="submit">{pending ? "Saving…" : label}</Button>
+        <Button type="submit" className={secondary ? "secondary" : undefined}>
+          {pending ? "Saving…" : label}
+        </Button>
       </Fieldset>
       <OutcomeFocus state={state} focusTarget={focusTarget}>
         {pending && <Paragraph role="status">Saving your change…</Paragraph>}
@@ -125,7 +130,8 @@ export function CommandForm({
           </Paragraph>
         )}
         {!pending && state.path && <Link href={state.path}>{resultLabel}</Link>}
-        {link && (
+        {/* `link` is "" without an invitation; never render a bare string in a View. */}
+        {link ? (
           <Box>
             <Label>
               Manual invitation link
@@ -148,7 +154,7 @@ export function CommandForm({
               shown once; create a replacement if lost.
             </Paragraph>
           </Box>
-        )}
+        ) : null}
       </OutcomeFocus>
     </Form>
   );
