@@ -13,6 +13,7 @@ import {
   Text,
   TextInput,
   Pressable,
+  ActivityIndicator,
   useWindowDimensions,
   StyleSheet,
   type StyleProp,
@@ -20,7 +21,10 @@ import {
   type TextStyle,
 } from "react-native";
 import { router, usePathname } from "expo-router";
-import { colors, styles, classStyle, textRules } from "./styles";
+import { colors, spacing, styles, classStyle, textRules } from "./styles";
+import { Icon } from "./icon";
+import { Segmented } from "./segmented";
+import { tap } from "./haptics";
 import type { CommandInput } from "@/services/fields";
 import { SelectControl } from "./select-control";
 import { DateControl } from "./date-control";
@@ -48,9 +52,10 @@ export const TypographyScale = createContext<"app" | "auth">("app");
 const Parent = createContext("");
 const InheritedText = createContext<TextStyle>({});
 const LabelText = createContext("");
-const LabelToggle = createContext<((next: (() => void) | null) => void) | null>(
-  null,
-);
+const LabelToggle = createContext<{
+  register: (next: (() => void) | null) => void;
+  report: (checked: boolean) => void;
+} | null>(null);
 const Disabled = createContext(false);
 export function textContent(children: ReactNode): string {
   return Children.toArray(children)
@@ -108,6 +113,7 @@ export function Box({
           nativeID={props.id}
           role={props.role as never}
           accessibilityLabel={props["aria-label"]}
+          aria-labelledby={props["aria-labelledby"]}
           accessibilityElementsHidden={Boolean(props["aria-hidden"])}
           style={[styles.box, rule, style]}
         >
@@ -129,42 +135,22 @@ function useStyledText(props: ElementProps, base?: TextStyle, role?: string) {
     base,
     base === styles.h1
       ? scale === "auth"
-        ? {
-            fontSize: width <= 650 ? 27 : 29,
-            lineHeight: 37,
-            letterSpacing: -0.8,
-          }
-        : width <= 1200
-          ? {
-              fontSize: width <= 650 ? 28 : 30,
-              lineHeight: width <= 650 ? 36 : 39,
-              letterSpacing: -0.9,
-            }
+        ? { fontSize: 26, lineHeight: 32, letterSpacing: -0.6 }
+        : width <= 650
+          ? { fontSize: 28, lineHeight: 34, letterSpacing: -0.7 }
           : undefined
       : undefined,
-    parent.includes("week-day")
-      ? {
-          fontSize:
-            base === styles.strong
-              ? width <= 650
-                ? 21
-                : 25
-              : width <= 650
-                ? 11
-                : 12,
-          textAlign: "center",
-        }
-      : undefined,
-    rule,
     parent === "form-section"
       ? base === styles.h2
-        ? { fontSize: 20, marginBottom: 5 }
+        ? { fontSize: 17, lineHeight: 24, marginBottom: 0 }
         : base === styles.paragraph
-          ? { fontSize: 13, marginVertical: 0 }
+          ? { fontSize: 14, lineHeight: 20, marginVertical: 0 }
           : undefined
       : undefined,
     props.role === "alert" ? styles.alert : undefined,
     props.role === "status" ? styles.status : undefined,
+    // A tone class ("notice attention") outranks the default role wash.
+    rule,
     props.style,
   ]);
   return (
@@ -219,6 +205,19 @@ export function Heading2(p: ElementProps) {
 export function Heading3(p: ElementProps) {
   return useStyledText(p, styles.h3, "heading");
 }
+// The one loading state: a spinner and a few words, announced politely.
+export function Loading({ children = "Loading…" }: { children?: string }) {
+  return (
+    <View
+      role="status"
+      aria-live="polite"
+      style={[styles.row, { paddingVertical: spacing.lg }]}
+    >
+      <ActivityIndicator size="small" color={colors.blue} />
+      <Text style={[styles.text, { color: colors.muted }]}>{children}</Text>
+    </View>
+  );
+}
 export function Section(p: ElementProps) {
   return <Box {...p} className={`panel ${p.className ?? ""}`} />;
 }
@@ -244,17 +243,33 @@ export function Legend(p: ElementProps) {
 export function Break() {
   return <Text>{"\n"}</Text>;
 }
+// An in-page jump ("#family-consent") or a route. Honors the button classes so
+// a next-step jump looks like the button it is.
 export function Anchor({ href = "", ...p }: ElementProps & { href?: string }) {
   const pathname = usePathname();
+  const name = p.className ?? "";
+  const go = () => {
+    if (href.startsWith("#")) followAnchor(href.slice(1));
+    else router.push((href || pathname) as never);
+  };
+  if (name.includes("button"))
+    return (
+      <Pressable
+        role="link"
+        accessibilityLabel={p["aria-label"]}
+        onPress={go}
+        style={({ pressed }) => [
+          styles.button,
+          name.includes("primary") ? styles.primary : undefined,
+          pressed ? styles.pressed : undefined,
+          p.style,
+        ]}
+      >
+        <Text style={[styles.text, styles.buttonText]}>{p.children}</Text>
+      </Pressable>
+    );
   return (
-    <Text
-      role="link"
-      style={[styles.text, styles.link, p.style]}
-      onPress={() => {
-        if (href.startsWith("#")) followAnchor(href.slice(1));
-        else router.push((href || pathname) as never);
-      }}
-    >
+    <Text role="link" style={[styles.text, styles.link, p.style]} onPress={go}>
       {p.children}
     </Text>
   );
@@ -295,7 +310,11 @@ export function Form({
         entry.required &&
         ((entry.type === "checkbox" && !entry.checked) || !entry.value.trim())
       ) {
-        setError(`Complete ${entry.label || entry.name}.`);
+        setError(
+          entry.type === "checkbox"
+            ? `Tick “${entry.label || entry.name}” to continue.`
+            : `Add ${(entry.label || entry.name).toLowerCase()} to continue.`,
+        );
         return;
       }
       if (entry.type === "checkbox" && !entry.checked) continue;
@@ -328,7 +347,7 @@ export function Form({
         <Box
           {...p}
           role="form"
-          aria-label={p["aria-label"] ?? "Pool form"}
+          aria-label={p["aria-label"]}
           style={[
             styles.form,
             parent === "ride-plan"
@@ -336,8 +355,8 @@ export function Form({
                   ...styles.panel,
                   maxWidth: "100%",
                   width: "100%",
-                  padding: width <= 650 ? 18 : 25,
-                  marginVertical: 20,
+                  padding: width <= 650 ? spacing.lg : spacing.xxl,
+                  marginVertical: spacing.lg,
                   marginTop: 0,
                 }
               : undefined,
@@ -359,28 +378,14 @@ export function Fieldset({
   return (
     <Disabled.Provider value={parent || disabled}>
       <Box {...p} style={[styles.fieldset, p.style]}>
-        {Children.map(p.children, (child, index) =>
-          index > 0 &&
-          React.isValidElement<ElementProps>(child) &&
-          child.props.className === "form-section"
-            ? React.cloneElement(child, {
-                style: [
-                  {
-                    borderTopWidth: 1,
-                    borderColor: colors.line,
-                    paddingTop: 25,
-                  },
-                  child.props.style,
-                ],
-              })
-            : child,
-        )}
+        {p.children}
       </Box>
     </Disabled.Provider>
   );
 }
 export function Label({ children, className, ...p }: ElementProps) {
   const toggle = useRef<(() => void) | null>(null);
+  const [on, setOn] = useState(false);
   const nodes = Children.toArray(children);
   const controls = nodes.filter((child) => React.isValidElement(child));
   const label = textContent(
@@ -394,7 +399,7 @@ export function Label({ children, className, ...p }: ElementProps) {
         style={[
           styles.text,
           checkbox
-            ? { flex: 1, fontSize: 14, fontWeight: "400" }
+            ? { flex: 1, fontSize: 16, fontWeight: on ? "600" : "400" }
             : styles.labelText,
         ]}
       >
@@ -406,8 +411,11 @@ export function Label({ children, className, ...p }: ElementProps) {
   return (
     <LabelText.Provider value={label}>
       <LabelToggle.Provider
-        value={(next) => {
-          toggle.current = next;
+        value={{
+          register: (next) => {
+            toggle.current = next;
+          },
+          report: setOn,
         }}
       >
         {checkbox ? (
@@ -416,7 +424,10 @@ export function Label({ children, className, ...p }: ElementProps) {
             focusable={false}
             tabIndex={-1}
             onPress={() => toggle.current?.()}
-            style={styles.checkboxLabel}
+            style={[
+              styles.checkboxLabel,
+              on ? styles.checkboxLabelOn : undefined,
+            ]}
           >
             {content}
           </Pressable>
@@ -465,12 +476,18 @@ export function Field({
   const [checked, setChecked] = useState(defaultChecked);
   useEffect(() => {
     if (type === "checkbox" && toggle) {
-      toggle(() => setChecked((previous) => !previous));
+      toggle.register(() => setChecked((previous) => !previous));
       return () => {
-        toggle(null);
+        toggle.register(null);
       };
     }
-  }, [type, toggle]);
+    // The context value is recreated each render; its callbacks are stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [type, Boolean(toggle)]);
+  useEffect(() => {
+    if (type === "checkbox") toggle?.report(checked);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [type, checked, Boolean(toggle)]);
   const value = controlled === undefined ? draft : String(controlled);
   const entryValue = type === "checkbox" ? String(controlled ?? "on") : value;
   useEffect(() => {
@@ -503,17 +520,14 @@ export function Field({
           event.stopPropagation();
           setChecked(!checked);
         }}
+        hitSlop={10}
         style={[
           styles.checkbox,
-          checked
-            ? { backgroundColor: colors.green, borderColor: colors.green }
-            : undefined,
+          checked ? styles.checkboxOn : undefined,
           disabled ? styles.disabled : undefined,
         ]}
       >
-        <Text style={{ color: "white", fontSize: 16 }}>
-          {checked ? "✓" : ""}
-        </Text>
+        {checked && <Icon name="check" size={16} color={colors.ink} />}
       </Pressable>
     );
   if (type === "date" || type === "time" || type === "datetime-local")
@@ -553,7 +567,7 @@ export function Field({
       autoComplete={p.autoComplete as never}
       maxLength={p.maxLength}
       placeholder={p.placeholder}
-      placeholderTextColor={colors.muted}
+      placeholderTextColor={colors.placeholder}
       onSubmitEditing={submitOnReturn ? () => form?.submit() : undefined}
       style={[styles.field, disabled ? styles.disabled : undefined]}
     />
@@ -621,44 +635,113 @@ export function Select({
     />
   );
 }
+// Short, exclusive choices rendered as a segmented control (two to four
+// options). Registers with the surrounding form like a Select.
+export function Choice({
+  name = "",
+  defaultValue = "",
+  value: controlled,
+  onChange,
+  options,
+  ...p
+}: {
+  name?: string;
+  defaultValue?: string;
+  value?: string;
+  onChange?: (event: { target: { value: string } }) => void;
+  options: { value: string; label: string }[];
+  "aria-label"?: string;
+}) {
+  const id = useId(),
+    form = useContext(FormState),
+    label = useContext(LabelText) || p["aria-label"] || name,
+    disabled = useContext(Disabled) || form?.disabled;
+  const [draft, setDraft] = useState(defaultValue || options[0]?.value || "");
+  const value = controlled === undefined ? draft : controlled;
+  useEffect(() => {
+    form?.register(id, { name, value, type: "select", label });
+    return () => form?.remove(id);
+  }, [form, id, name, value, label]);
+  return (
+    <Segmented
+      testID={name ? `field-${name}` : undefined}
+      label={label}
+      options={options}
+      value={value}
+      disabled={Boolean(disabled)}
+      onChange={(next) => {
+        setDraft(next);
+        onChange?.({ target: { value: next } });
+      }}
+    />
+  );
+}
+// One button, four emphases. className picks the emphasis:
+//   primary   the single main commitment on a view (default for type="submit")
+//   secondary everything else
+//   danger    destructive or withdrawing actions
+//   quiet     low-emphasis text action
 export function Button({
   children,
   type = "button",
   disabled = false,
+  busy = false,
   onPress,
   onClick,
   ...p
-}: ElementProps & { type?: string; disabled?: boolean; autoFocus?: boolean }) {
+}: ElementProps & {
+  type?: string;
+  disabled?: boolean;
+  busy?: boolean;
+  autoFocus?: boolean;
+}) {
   const form = useContext(FormState),
     parent = useContext(Disabled);
+  const { width } = useWindowDimensions();
+  const name = p.className ?? "";
+  const danger = name.includes("danger");
+  const quiet = name.includes("quiet");
   const primary =
-    !p.className?.includes("secondary") &&
-    (type === "submit" || Boolean(p.className?.includes("primary")));
+    !danger &&
+    !quiet &&
+    !name.includes("secondary") &&
+    (type === "submit" || name.includes("primary"));
+  const off = disabled || parent;
   return (
     <Pressable
       nativeID={p.id}
       accessibilityRole="button"
       accessibilityLabel={p["aria-label"]}
-      disabled={disabled || parent}
-      aria-disabled={disabled || parent}
-      accessibilityState={{ disabled: disabled || parent }}
+      disabled={off}
+      aria-disabled={off}
+      aria-busy={busy || undefined}
+      accessibilityState={{ disabled: off, busy }}
       onPress={() => {
+        if (primary || danger) tap();
         if (onPress) onPress();
         else if (onClick) onClick();
         else if (type === "submit") form?.submit();
       }}
-      style={[
+      style={({ pressed }) => [
         styles.button,
         primary ? styles.primary : undefined,
-        disabled || parent ? styles.disabled : undefined,
+        danger ? styles.danger : undefined,
+        quiet ? styles.quiet : undefined,
+        // A form's commitment spans the column on a phone: easy to reach.
+        type === "submit" && width <= 650 ? { alignSelf: "stretch" } : undefined,
+        pressed ? styles.pressed : undefined,
+        off ? styles.disabled : undefined,
         p.style,
       ]}
     >
+      {busy && <ActivityIndicator size="small" color={colors.ink} />}
       <Text
         style={[
           styles.text,
           styles.buttonText,
           primary ? styles.primaryText : undefined,
+          danger ? styles.dangerText : undefined,
+          quiet ? styles.quietText : undefined,
         ]}
       >
         {children}

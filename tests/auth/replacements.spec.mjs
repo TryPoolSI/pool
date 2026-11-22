@@ -1,5 +1,4 @@
-import { upcomingRideFields } from "../../scripts/auth-test-dates.mjs";
-import { replayDenied } from "./rpc.mjs";
+import { authenticatedRpc, replayDenied } from "./rpc.mjs";
 import {
   expandDetails,
   visit,
@@ -8,162 +7,228 @@ import {
   closeAction,
   account,
   addChild,
+  expectToast,
   family,
   invitation,
+  joinInvitation,
   openAndCheck,
   password,
 } from "./helpers.mjs";
 import { captureState } from "./presentation.mjs";
 import { test, expect } from "@playwright/test";
-async function join(a, b, circle, name) {
-  await visit(a.page, circle);
-  const link = await invitation(a.page, b.email, "circle");
-  await openAndCheck(b.page, link);
-  await b.page.getByLabel("Your display name").fill(name);
-  await b.page
-    .getByLabel("Family to join the circle")
-    .selectOption({ label: name });
-  await b.page
-    .getByLabel("I explicitly accept this circle family membership.")
-    .check();
-  await b.page
-    .getByRole("button", { name: "Accept invitation", exact: true })
-    .click();
-  await expect(b.page.getByRole("heading", { level: 1 })).toHaveText(name);
+
+// The planner runs on the device's clock, and the driver's pickup step opens an
+// hour before pickup. So the ride starts soon, on devices whose clock is
+// nowhere near midnight.
+const zone = new Date().getUTCHours() >= 20 ? "Asia/Tokyo" : "UTC";
+function soonRide() {
+  const local = (minutes) => {
+    const parts = Object.fromEntries(
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone: zone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+      })
+        .formatToParts(new Date(Date.now() + minutes * 60_000))
+        .map((part) => [part.type, part.value]),
+    );
+    return {
+      date: `${parts.year}-${parts.month}-${parts.day}`,
+      time: `${parts.hour}:${parts.minute}`,
+    };
+  };
+  const pickup = local(45);
+  return { date: pickup.date, pickup: pickup.time, dropoff: local(75).time };
+}
+const onDevice = (browser) => ({
+  newContext: (options) => browser.newContext({ ...options, timezoneId: zone }),
+});
+const button = (scope, name) =>
+  scope.getByRole("button", { name, exact: true });
+// The ride's state badge sits beside its title.
+const badge = (page, label) =>
+  page
+    .getByRole("heading", { level: 1 })
+    .locator("xpath=../..")
+    .getByText(label, { exact: true });
+const driverCard = (page) =>
+  page
+    .getByRole("main")
+    .locator("div")
+    .filter({ has: page.getByRole("heading", { name: "Driver", exact: true }) })
+    .last();
+const nextStep = (page) =>
+  page.getByRole("region", { name: "Your next step", exact: true });
+const boosters = "I have 2 boosters";
+
+async function rpc(page, name, args) {
+  const response = await authenticatedRpc(page, name, args);
+  expect(response.ok(), name).toBe(true);
+  return response.json();
+}
+async function join(inviter, recipient, circleUrl, circleName) {
+  await visit(inviter.page, circleUrl);
+  const link = await invitation(inviter.page, recipient.email, "circle");
+  const familyUrl = recipient.page.url();
+  await openAndCheck(recipient.page, link);
+  await joinInvitation(recipient.page, circleName);
+  await expectToast(recipient.page, `You joined ${circleName}`);
+  await expect(recipient.page).toHaveURL(familyUrl);
 }
 async function vehicle(page, label) {
   await visit(page, "/app/vehicles");
-  const f = page.locator('[role="form"]').filter({
-    has: page.getByRole("button", { name: "Save vehicle", exact: true }),
-  });
-  await f.getByLabel("Vehicle label").fill(label);
-  await f.getByLabel("Passenger seats, excluding you").fill("3");
-  await f.getByRole("button", { name: "Save vehicle", exact: true }).click();
-  await expect(f.getByRole("status")).toContainText("Saved");
+  const sheet = await openAction(page, "Add a car");
+  await sheet.getByLabel("Car name", { exact: true }).fill(label);
+  const seats = sheet
+    .getByRole("radiogroup", { name: "Seats for passengers", exact: true })
+    .getByRole("radio", { name: "3", exact: true });
+  await seats.click();
+  await expect(seats).toBeChecked();
+  await button(sheet, "Add car").click();
+  await expectToast(page, `${label} added`);
+  await expect(sheet).toHaveCount(0);
 }
-async function approve(page, name) {
-  await expandDetails(page);
-  const f = page.locator('[role="form"]').filter({
-    has: page.getByRole("button", {
-      name: "Approve driver for selected children",
+async function signIn(page, email) {
+  await visit(page, "/sign-in");
+  await page.getByLabel("Email address").fill(email);
+  await page.getByLabel("Password", { exact: true }).fill(password);
+  await button(page, "Sign in").click();
+  await expect(page).toHaveURL(/\/app$/);
+}
+async function expand(page, name) {
+  const toggle = button(page, name);
+  await expect(toggle).toBeVisible();
+  if ((await toggle.getAttribute("aria-expanded")) !== "true")
+    await toggle.click();
+}
+// Rare actions sit behind "More"; a sheet opens from there.
+async function moreAction(page, title) {
+  await expand(page, "More");
+  return openAction(page, title);
+}
+// What came of earlier requests: More → "Driver changes so far".
+async function changes(page, text) {
+  await expand(page, "More");
+  await expand(page, "Driver changes so far");
+  return page.getByText(text, { exact: false });
+}
+// The driver's yes: the one tick left is for the boosters these riders need.
+async function accept(page, title, car) {
+  const step = nextStep(page);
+  await expect(
+    step.getByRole("heading", { name: title, exact: true }),
+  ).toBeVisible();
+  await expect(
+    step.getByText(`2 riders in your ${car}, with 2 boosters.`, {
       exact: true,
     }),
-  });
-  await f.getByLabel(name, { exact: true }).check();
-  await f
-    .getByLabel(
-      "I explicitly consent to this driver, vehicle and plan for my selected children.",
-    )
-    .check();
-  await f
-    .getByRole("button", {
-      name: "Approve driver for selected children",
-      exact: true,
-    })
-    .click();
-  await expect(
-    page.getByRole("listitem").filter({ hasText: `${name}: Consent saved` }),
   ).toBeVisible();
+  await expect(step.getByRole("checkbox")).toHaveCount(1);
+  await step.getByLabel(boosters, { exact: true }).check();
+  await button(step, "Yes, I’ll drive").click();
 }
-async function accept(page) {
-  await page.getByLabel("Available passenger seats, excluding you").fill("3");
-  await page
-    .getByLabel(
-      "I can accommodate all 2 booster seats and 0 child seats required for these riders.",
-    )
-    .check();
-  await page
-    .getByLabel(
-      "I explicitly accept driving this ride with this vehicle and available passenger capacity.",
-    )
-    .check();
-  await page
-    .getByRole("button", { name: "Accept as driver", exact: true })
-    .click();
+// Someone from a riding family asks another adult to take over, from the
+// Driver card. The current driver keeps the ride until the new one says yes;
+// nobody else has to approve.
+async function askToTakeOver(
+  page,
+  { driver, car, keeps, title = "Ask someone else to drive" },
+) {
+  const first = driver.split(" ")[0];
+  await expect(button(driverCard(page), title)).toBeVisible();
+  const sheet = await openAction(page, title);
   await expect(
-    page.getByText("Driver acceptance: Accepted", { exact: false }),
+    sheet.getByText(`${driver} would drive the ${car}.`, { exact: true }),
   ).toBeVisible();
-}
-async function replacement(page, name) {
-  await expandDetails(page);
-  await openAction(page, "Review driver change");
-  const f = page.locator('[role="form"]').filter({
-    has: page.getByRole("button", {
-      name: "Request replacement",
-      exact: true,
-    }),
-  });
-  await f.getByLabel("Replacement driver and registered vehicle").selectOption({
-    label: `${name} · ${name === "R7 Guardian A" ? "R7 candidate car" : "R7 original van"} · 3 passenger seats`,
-  });
-  await f
-    .getByLabel(
-      "I request a replacement with fresh driver acceptance and consent for every enrolled child.",
-    )
-    .check();
-  await f
-    .getByRole("button", { name: "Request replacement", exact: true })
-    .focus();
+  await expect(
+    sheet.getByText(
+      `${keeps} driving until ${first} says yes. Then every family on the ride is told.`,
+      { exact: true },
+    ),
+  ).toBeVisible();
+  // The request stays open until pickup: nobody sets a deadline or ticks a box.
+  await expect(sheet.getByLabel(/deadline/i)).toHaveCount(0);
+  await expect(sheet.getByRole("checkbox")).toHaveCount(0);
+  await button(sheet, `Ask ${first} to drive`).focus();
   await page.keyboard.press("Enter");
+  await expectToast(page, "Request sent");
+  await expect(sheet).toHaveCount(0);
+  await expect(driverCard(page)).toContainText(
+    `${driver} was asked to take over`,
+  );
+  await expect(driverCard(page)).toContainText(
+    `${keeps} driving until ${first} says yes.`,
+  );
+  // One request at a time: nobody else can be asked while this one is open.
+  await expect(button(page, title)).toHaveCount(0);
+}
+async function cancelRequest(page, keeps) {
+  const sheet = await moreAction(page, "Cancel driver request");
   await expect(
-    page
-      .getByRole("dialog", { name: "Review driver change", exact: true })
-      .getByRole("status"),
-  ).toContainText("Saved request pending");
-  await closeAction(page, "Review driver change");
-  await expect(
-    page.getByText("Replacement candidate · pending", { exact: false }),
+    sheet.getByText(`${keeps} driving.`, { exact: true }),
   ).toBeVisible();
+  await expect(sheet.getByRole("checkbox")).toHaveCount(0);
+  await button(sheet, "Cancel request").click();
+  await expectToast(page, "Request cancelled");
+  await expect(sheet).toHaveCount(0);
 }
 
-test("R7 real adults preserve optional swaps, reset unavailable consent and persist replacement across independent sessions", async ({
+test("R7 real adults preserve optional swaps, swap on the new driver's yes alone and persist replacement across independent sessions", async ({
   browser,
 }) => {
-  const a = await account(browser, "r7-a"),
-    b = await account(browser, "r7-b"),
-    d = await account(browser, "r7-driver"),
-    second = await browser.newContext(),
-    historySession = await browser.newContext();
+  const a = await account(onDevice(browser), "r7-a"),
+    b = await account(onDevice(browser), "r7-b"),
+    d = await account(onDevice(browser), "r7-driver"),
+    second = await browser.newContext({ timezoneId: zone }),
+    historySession = await browser.newContext({ timezoneId: zone });
   try {
     await captureState(a.page, "empty");
-    const familyA = await family(a.page, "R7 family A", "R7 Guardian A");
-    await family(b.page, "R7 family B", "R7 Guardian B");
-    await family(d.page, "R7 driver family", "R7 original driver");
-    await openAction(a.page, "Create a circle");
-    await a.page.getByLabel("Circle name").fill("R7 circle");
-    await a.page
-      .getByRole("button", { name: "Create circle", exact: true })
-      .click();
-    await a.page.getByRole("link", { name: "Open saved membership" }).click();
+    const familyA = await family(a.page, "R7 family A", "Avery Guardian");
+    await family(b.page, "R7 family B", "Blake Guardian");
+    await family(d.page, "R7 driver family", "Devon Driver");
+    const circleSheet = await openAction(a.page, "Create a circle");
+    await circleSheet
+      .getByLabel("Circle name", { exact: true })
+      .fill("R7 circle");
+    await button(circleSheet, "Create circle").click();
+    await expectToast(a.page, "Circle created");
     await expect(
-      a.page.getByRole("heading", { name: "R7 circle", exact: true }),
+      a.page.getByRole("heading", { level: 1, name: "R7 circle" }),
     ).toBeVisible();
     const circle = a.page.url();
-    await join(a, b, circle, "R7 family B");
-    await join(a, d, circle, "R7 driver family");
+    await join(a, b, circle, "R7 circle");
+    await join(a, d, circle, "R7 circle");
     await visit(a.page, familyA);
     await addChild(a.page, "R7 child A");
     await addChild(b.page, "R7 child B");
     await vehicle(a.page, "R7 candidate car");
     await vehicle(d.page, "R7 original van");
-    await visit(a.page, "/app/rides/new");
-    const rideTimes = upcomingRideFields();
+    const rideTimes = soonRide();
+    await visit(a.page, `/app/rides/new?date=${rideTimes.date}`);
     for (const [label, value] of [
-      ["Pickup summary", "R7 neighborhood"],
-      ["Drop-off summary", "R7 activity"],
-      ["Exact pickup", "Private R7 pickup"],
-      ["Exact drop-off", "Private R7 destination"],
-      ["IANA timezone", "UTC"],
-      ["Pickup time", rideTimes.pickup],
-      ["Drop-off time", rideTimes.dropoff],
+      ["From", "R7 neighborhood"],
+      ["To", "R7 activity"],
+      ["Pickup address", "Private R7 pickup"],
+      ["Drop-off address", "Private R7 destination"],
+      ["Pickup", rideTimes.pickup],
+      ["Drop-off", rideTimes.dropoff],
     ])
       await a.page.getByLabel(label, { exact: true }).fill(value);
-    await a.page.getByLabel("R7 child A", { exact: true }).check();
-    await a.page.getByLabel("R7 family B", { exact: true }).check();
-    await a.page
-      .getByRole("button", { name: "Create ride", exact: true })
-      .click();
-    await a.page.getByRole("link", { name: "Open saved result" }).click();
+    await expect(
+      a.page.getByLabel("R7 child A", { exact: true }),
+    ).toBeChecked();
+    await expect(
+      a.page.getByLabel("R7 family B", { exact: true }),
+    ).toBeChecked();
+    // The first driver's family has no rider: they only ever see a request.
+    await a.page.getByLabel("R7 driver family", { exact: true }).uncheck();
+    await button(a.page, "Create ride").click();
+    await expectToast(a.page, "Ride created");
+    await expect(a.page).toHaveURL(/\/app\/rides\/[a-f0-9-]{36}$/);
     await expect(
       a.page.getByRole("heading", {
         name: "R7 neighborhood → R7 activity",
@@ -171,250 +236,312 @@ test("R7 real adults preserve optional swaps, reset unavailable consent and pers
       }),
     ).toBeVisible();
     const ride = a.page.url();
+    const rideId = new URL(ride).pathname.split("/").at(-1);
+    const status = async (page = a.page) =>
+      (await rpc(page, "driver_status", { p_ride_id: rideId }))[0];
+    const state = async (...keys) => {
+      const current = await status();
+      return keys.map((key) => current[key]);
+    };
     await visit(b.page, ride);
-    await b.page.getByLabel("R7 child B", { exact: true }).check();
-    await b.page
-      .getByRole("button", { name: "Join with own riders", exact: true })
-      .click();
+    await expect(
+      nextStep(b.page).getByLabel("R7 child B", { exact: true }),
+    ).toBeChecked();
+    await button(nextStep(b.page), "Join ride").click();
+    await expectToast(b.page, "You’re in");
     await expect(
       b.page.getByText("Private R7 pickup", { exact: true }),
     ).toBeVisible();
     await refresh(a.page);
     await captureState(a.page, "uncovered");
-    const nom = a.page.locator('[role="form"]').filter({
-      has: a.page.getByRole("button", {
-        name: "Nominate driver",
+
+    // A asks the first driver. The driver's yes is all the ride waits for.
+    const first = await openAction(a.page, "Ask someone else");
+    await expect(
+      first.getByText("Devon Driver would drive the R7 original van.", {
         exact: true,
       }),
-    });
-    await nom.getByLabel("Driver and registered vehicle").selectOption({
-      label: "R7 original driver · R7 original van · 3 passenger seats",
-    });
-    await nom
-      .getByLabel(
-        "I nominate this adult and vehicle for this ride’s current riders and plan.",
-      )
-      .check();
-    await nom
-      .getByRole("button", { name: "Nominate driver", exact: true })
-      .click();
-    await expect(
-      a.page.getByText("Awaiting confirmation", { exact: true }),
-    ).toBeVisible();
-    await captureState(a.page, "pending", "Driver and assignment");
-    await visit(d.page, ride);
-    await accept(d.page);
-    await refresh(a.page);
-    await approve(a.page, "R7 child A");
-    await refresh(b.page);
-    await approve(b.page, "R7 child B");
-    await refresh(a.page);
-    await captureState(a.page, "confirmed", "Driver and assignment");
-    await replacement(a.page, "R7 Guardian A");
-    await expect(
-      a.page.getByText("Optional driver swap", { exact: true }),
     ).toBeVisible();
     await expect(
-      a.page.getByText("Current driver:", { exact: false }),
-    ).toContainText("R7 original driver");
-    await expect(a.page.getByTestId("driver-summary")).toContainText(
-      "R7 Guardian A · R7 candidate car",
+      first.getByText("The ride is set as soon as Devon says yes.", {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await button(first, "Ask Devon to drive").click();
+    await expectToast(a.page, "Request sent");
+    await expect(first).toHaveCount(0);
+    await expect(badge(a.page, "Asked Devon")).toBeVisible();
+    await expect(driverCard(a.page)).toContainText(
+      "Devon Driver was asked to drive",
     );
-    if (process.env.POOL_BASELINE !== "1")
-      await expect(
-        a.page.getByText("Replacement candidate · pending", { exact: true }),
-      ).toBeVisible();
-    await expandDetails(a.page);
-    await a.page
-      .getByLabel(
-        "I cancel this nomination. An available original driver stays assigned.",
-      )
-      .check();
-    await a.page
-      .getByRole("button", { name: "Cancel driver proposal", exact: true })
-      .click();
+    await expect(driverCard(a.page)).toContainText(
+      "The ride is set as soon as Devon says yes.",
+    );
+    await captureState(a.page, "pending", "Driver");
+    await visit(d.page, ride);
+    await accept(d.page, "Can you drive this ride?", "R7 original van");
+    await expectToast(d.page, "You’re driving");
+    await expect(driverCard(d.page)).toContainText("You’re driving");
+    await expect(badge(d.page, "You’re driving")).toBeVisible();
+    expect(await state("mode", "coverage", "current_driver_name")).toEqual([
+      "initial",
+      "confirmed",
+      "Devon Driver",
+    ]);
+    // Neither family is asked to approve the driver.
+    for (const page of [a.page, b.page]) {
+      await refresh(page);
+      await expect(badge(page, "Covered")).toBeVisible();
+      await expect(nextStep(page)).toHaveCount(0);
+      await expect(page.getByRole("button", { name: /Approve/ })).toHaveCount(0);
+      await expect(driverCard(page)).toContainText("Devon Driver is driving");
+    }
+    await captureState(a.page, "confirmed", "Driver");
+
+    // Asking someone to take over is for someone else. A's only other choice
+    // would be A, and the driver who holds the ride is not a replacement.
+    const nobody = await openAction(a.page, "Ask someone else to drive");
     await expect(
-      a.page.getByText("Replacement candidate · cancelled", { exact: false }),
+      nobody.getByText(
+        "Nobody else in this circle has a car with a seat for every rider yet.",
+        { exact: true },
+      ),
     ).toBeVisible();
-    await expect(a.page.getByText("Confirmed", { exact: true })).toBeVisible();
-    await captureState(a.page, "closed-swap", "Driver and assignment");
-    // Closed candidate replies never change the still-available original assignment.
+    await expect(nobody.getByRole("button", { name: /^Ask / })).toHaveCount(0);
+    await closeAction(a.page, "Ask someone else to drive");
+
+    // B asks A to take over. The swap is optional: Devon keeps the ride.
+    await refresh(b.page);
+    const swap = {
+      driver: "Avery Guardian",
+      car: "R7 candidate car",
+      keeps: "Devon keeps",
+    };
+    await askToTakeOver(b.page, swap);
+    await expect(badge(b.page, "Covered")).toBeVisible();
+    await expect(driverCard(b.page)).toContainText("Devon Driver is driving");
+    await expect(driverCard(b.page)).toContainText("R7 candidate car");
+    await expect
+      .poll(() =>
+        state("mode", "proposal_status", "coverage", "current_driver_name"),
+      )
+      .toEqual(["optional_swap", "pending", "confirmed", "Devon Driver"]);
+    // Being asked to take over is A's move, on a ride that stays covered.
     await refresh(a.page);
-    await replacement(a.page, "R7 Guardian A");
-    await a.page
-      .getByRole("button", { name: "Decline driving", exact: true })
-      .click();
+    await expect(badge(a.page, "Your reply")).toBeVisible();
     await expect(
-      a.page.getByText("Replacement candidate · declined", { exact: false }),
-    ).toBeVisible();
-    await captureState(a.page, "declined", "Driver and assignment");
-    await replacement(a.page, "R7 Guardian A");
-    // A real database deadline expires without a scheduler or a simulated browser clock.
-    // Cancel the default-deadline request, then create a fresh short-lived one.
-    await expandDetails(a.page);
-    await a.page
-      .getByLabel(
-        "I cancel this nomination. An available original driver stays assigned.",
-      )
-      .check();
-    await a.page
-      .getByRole("button", { name: "Cancel driver proposal", exact: true })
-      .click();
-    await expect(
-      a.page.getByText("Replacement candidate · cancelled", { exact: false }),
-    ).toBeVisible();
-    await openAction(a.page, "Review driver change");
-    const expiring = a.page.locator('[role="form"]').filter({
-      has: a.page.getByRole("button", {
-        name: "Request replacement",
+      nextStep(a.page).getByRole("heading", {
+        name: "Can you take over driving?",
         exact: true,
       }),
+    ).toBeVisible();
+    await expect(driverCard(a.page)).toContainText("Devon Driver is driving");
+    await expect(driverCard(a.page)).toContainText(
+      "You were asked to take over",
+    );
+    await expect(driverCard(a.page)).toContainText(
+      "Devon keeps driving until you say yes.",
+    );
+    const cancelled = (await status()).proposal_id;
+    await cancelRequest(b.page, "Devon keeps");
+    await expect(badge(b.page, "Covered")).toBeVisible();
+    await expect(driverCard(b.page)).not.toContainText("asked to take over");
+    await refresh(a.page);
+    await expect(badge(a.page, "Covered")).toBeVisible();
+    await expect(nextStep(a.page)).toHaveCount(0);
+    await expect(
+      await changes(a.page, "Blake Guardian cancelled the request"),
+    ).toHaveCount(1);
+    await captureState(a.page, "closed-swap", "Driver");
+    // Closed candidate replies never change the still-available original assignment.
+    const late = await authenticatedRpc(a.page, "accept_driver_proposal", {
+      p_id: cancelled,
+      p_revision: (await status()).ride_revision,
+      p_available_seats: 3,
+      p_restraints: true,
     });
-    await expiring
-      .getByLabel("Replacement driver and registered vehicle")
-      .selectOption({
-        label: "R7 Guardian A · R7 candidate car · 3 passenger seats",
-      });
-    // Chromium omits zero seconds when serializing datetime-local values.
-    // Playwright requires the supplied string to match that canonical form.
-    await expiring
-      .getByLabel("Review deadline in UTC")
-      .fill(
-        new Date(Date.now() + 6000)
-          .toISOString()
-          .slice(0, 19)
-          .replace(/:00$/, ""),
-      );
-    await expiring.getByRole("checkbox").check();
-    await expiring
-      .getByRole("button", { name: "Request replacement", exact: true })
-      .click();
+    expect(late.ok()).toBe(false);
+    expect((await late.json()).code).toBe("PT409");
+    expect(
+      await state("proposal_status", "coverage", "current_driver_name"),
+    ).toEqual(["cancelled", "confirmed", "Devon Driver"]);
+    await refresh(b.page);
+    await askToTakeOver(b.page, swap);
+    await refresh(a.page);
+    await button(nextStep(a.page), "I can’t").click();
+    await expectToast(a.page, "Reply sent");
+    await expect(nextStep(a.page)).toHaveCount(0);
+    await expect(badge(a.page, "Covered")).toBeVisible();
+    await expect(driverCard(a.page)).toContainText("Devon Driver is driving");
+    await expect(driverCard(a.page)).not.toContainText("asked to take over");
+    await expect(await changes(a.page, "Avery Guardian said no")).toHaveCount(
+      1,
+    );
+    expect(await state("proposal_status", "coverage")).toEqual([
+      "declined",
+      "confirmed",
+    ]);
+    await captureState(a.page, "declined", "Driver");
+    await refresh(b.page);
+    await askToTakeOver(b.page, swap);
+    // The screen keeps a request open until pickup.
+    const [planned] = await rpc(b.page, "ride_offer", { p_id: rideId });
+    expect(planned.timezone).toBe(zone);
+    expect(new Date((await status()).deadline).getTime()).toBe(
+      new Date(planned.starts_at).getTime(),
+    );
+    await cancelRequest(b.page, "Devon keeps");
+    // A real database deadline expires without a scheduler or a simulated browser clock.
+    // The screen has no deadline to set, so this short-lived request is sent directly.
+    const current = await status(b.page);
+    const [seat] = await rpc(b.page, "ride_offer", { p_id: rideId });
+    const candidate = (
+      await rpc(b.page, "driver_options", { p_ride_id: rideId })
+    ).find((option) => option.vehicle_label === "R7 candidate car");
+    const expiring = crypto.randomUUID();
+    await rpc(b.page, "request_replacement", {
+      p_id: expiring,
+      p_ride_id: rideId,
+      p_family_id: seat.family_id,
+      p_revision: seat.revision,
+      p_driver_id: candidate.driver_id,
+      p_driver_family_id: candidate.driver_family_id,
+      p_vehicle_id: candidate.vehicle_id,
+      p_vehicle_version: candidate.vehicle_version,
+      p_mode: "optional_swap",
+      p_original_assignment_id: current.current_assignment_id,
+      p_original_assignment_revision: current.current_assignment_revision,
+      p_deadline: new Date(Date.now() + 8000).toISOString(),
+    });
+    await refresh(a.page);
     await expect(
-      a.page
-        .getByRole("dialog", { name: "Review driver change", exact: true })
-        .getByRole("status"),
-    ).toContainText("Saved request pending");
-    await closeAction(a.page, "Review driver change");
-    await expect(
-      a.page.getByText("Replacement candidate · pending", { exact: false }),
+      nextStep(a.page).getByRole("heading", {
+        name: "Can you take over driving?",
+        exact: true,
+      }),
     ).toBeVisible();
     await expect
       .poll(
         async () => {
           await refresh(a.page);
-          return a.page
-            .getByText("Replacement candidate · expired", { exact: false })
-            .count();
+          return nextStep(a.page).count();
         },
-        { timeout: 15000 },
+        { timeout: 20000 },
       )
-      .toBe(1);
-    await expect(a.page.getByText("Confirmed", { exact: true })).toBeVisible();
+      .toBe(0);
+    expect(await state("proposal_id", "proposal_status", "coverage")).toEqual([
+      expiring,
+      "expired",
+      "confirmed",
+    ]);
+    await expect(badge(a.page, "Covered")).toBeVisible();
+    await expect(driverCard(a.page)).toContainText("Devon Driver is driving");
+    await expect(driverCard(a.page)).not.toContainText("asked to take over");
+    await expect(button(a.page, "Yes, I’ll drive")).toHaveCount(0);
+    // A yes that arrives after the deadline is refused.
+    const tooLate = await authenticatedRpc(a.page, "accept_driver_proposal", {
+      p_id: expiring,
+      p_revision: current.ride_revision,
+      p_available_seats: 3,
+      p_restraints: true,
+    });
+    expect(tooLate.ok()).toBe(false);
+    expect(["PT409", "PT410"]).toContain((await tooLate.json()).code);
+    expect(await state("coverage", "current_driver_name")).toEqual([
+      "confirmed",
+      "Devon Driver",
+    ]);
+    await captureState(a.page, "expired", "Driver");
+
+    // A new request can follow the one that ran out of time.
+    await refresh(b.page);
+    await askToTakeOver(b.page, swap);
     await expect(
-      a.page.getByRole("button", { name: "Accept as driver", exact: true }),
-    ).toHaveCount(0);
-    await captureState(a.page, "expired", "Driver and assignment");
-    await refresh(a.page);
-    await replacement(a.page, "R7 Guardian A");
-    await accept(a.page);
-    await approve(a.page, "R7 child A");
+      await changes(b.page, "The request ran out of time"),
+    ).toHaveCount(1);
     await visit(a.page, "/app/attention");
+    const needsYou = a.page.getByRole("region", {
+      name: "Needs you",
+      exact: true,
+    });
     await expect(
-      a.page.getByRole("heading", { name: "Your driver replies" }),
+      needsYou.getByRole("link", {
+        name: /^R7 neighborhood → R7 activity, .*, Your reply\. Can you take over from Devon\? You’d drive the R7 candidate car\.$/,
+      }),
     ).toBeVisible();
-    await expect(
-      a.page
-        .getByText("R7 neighborhood → R7 activity", { exact: true })
-        .first(),
-    ).toBeVisible();
-    await refresh(d.page);
-    await expect(
-      d.page.getByRole("button", { name: "Withdraw as driver", exact: true }),
-    ).toBeVisible();
-    await d.page
-      .getByLabel("I withdraw and leave this ride needing a driver.")
-      .check();
-    await d.page
-      .getByRole("button", { name: "Withdraw as driver", exact: true })
-      .click();
+    await expect(button(needsYou, "Yes, I’ll drive")).toBeVisible();
+    await expect(button(needsYou, "I can’t")).toBeVisible();
+    // Actual callable driver response replay under a different participant cannot impersonate A.
+    await visit(a.page, ride);
+    await nextStep(a.page).getByLabel(boosters, { exact: true }).check();
+    await replayDenied(a.page, b.context, () =>
+      button(nextStep(a.page), "Yes, I’ll drive").click(),
+    );
+    expect((await status()).accepted_at).toBeNull();
+
+    // The driver who holds the ride steps back while the swap is still open.
+    await visit(d.page, ride);
+    await expect(driverCard(d.page)).toContainText("You’re driving");
+    const stop = await moreAction(d.page, "Stop driving this ride");
+    await expect(stop.getByRole("checkbox")).toHaveCount(0);
+    await button(stop, "Stop driving").click();
     await expect(
       d.page.getByRole("heading", { name: "Ride unavailable", exact: true }),
     ).toBeVisible();
+    // That leaves no driver and closes the swap: A is no longer asked.
     await visit(a.page, ride);
-    await expect(
-      a.page.getByText("Unassigned — needs a driver", { exact: true }),
-    ).toBeVisible();
-    await replacement(a.page, "R7 Guardian A");
-    await expect(
-      a.page.getByText("Unavailable-driver replacement", { exact: true }),
-    ).toBeVisible();
-    await expect(
-      a.page.getByText("Child consents: 0 of 2", { exact: false }),
-    ).toBeVisible();
-    await expect(
-      a.page.getByText("Driver acceptance: Required", { exact: false }),
-    ).toBeVisible();
-    // Actual callable driver response replay under a different participant cannot impersonate A.
-    await a.page
-      .getByLabel("Available passenger seats, excluding you")
-      .fill("3");
-    await a.page
-      .getByLabel(
-        "I can accommodate all 2 booster seats and 0 child seats required for these riders.",
-      )
-      .check();
-    await a.page
-      .getByLabel(
-        "I explicitly accept driving this ride with this vehicle and available passenger capacity.",
-      )
-      .check();
-    await replayDenied(a.page, b.context, () =>
-      a.page
-        .getByRole("button", { name: "Accept as driver", exact: true })
-        .click(),
+    await expect(badge(a.page, "Needs driver")).toBeVisible();
+    await expect(nextStep(a.page)).toHaveCount(0);
+    await expect(driverCard(a.page)).toContainText("No driver yet");
+    await expect(driverCard(a.page)).toContainText(
+      "Devon can’t drive anymore. This ride needs a driver.",
     );
-    await visit(a.page, ride);
-    await accept(a.page);
-    await approve(a.page, "R7 child A");
-    await approve(a.page, "R7 child A");
+    expect(await state("proposal_status", "coverage")).toEqual([
+      "invalidated",
+      "needs_driver",
+    ]);
+
+    // A offers to drive instead, and is the driver as soon as the offer is in.
+    const offer = await openAction(a.page, "I’ll drive");
     await expect(
-      a.page.getByText("Child consents: 1 of 2", { exact: false }),
+      offer.getByText("You’ll drive the R7 candidate car.", { exact: true }),
     ).toBeVisible();
+    await expect(
+      offer.getByText(
+        "You’re the driver as soon as you tap. The families on this ride are told.",
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await button(offer, "I’ll drive").click();
+    await expect(offer.getByRole("alert")).toHaveText(
+      `Tick “${boosters}” to continue.`,
+    );
+    await offer.getByLabel(boosters, { exact: true }).check();
+    await button(offer, "I’ll drive").click();
+    await expectToast(a.page, "You’re driving");
+    await expect(offer).toHaveCount(0);
+    await expect(badge(a.page, "You’re driving")).toBeVisible();
+    await expect(driverCard(a.page)).toContainText("You’re driving");
+    await expect(driverCard(a.page)).toContainText("R7 candidate car");
+    await expect(nextStep(a.page)).toHaveCount(0);
+    const offered = await status();
+    expect([
+      offered.mode,
+      offered.coverage,
+      offered.rider_count,
+      offered.current_driver_name,
+      Boolean(offered.accepted_at),
+    ]).toEqual(["unavailable", "confirmed", 2, "Avery Guardian", true]);
+    // The other family is told, in every one of its sessions. It approves nothing.
     const independent = await second.newPage();
-    await visit(independent, "/sign-in");
-    await independent.getByLabel("Email address").fill(b.email);
-    await independent.getByLabel("Password", { exact: true }).fill(password);
-    await independent
-      .getByRole("button", { name: "Sign in", exact: true })
-      .click();
-    await expect(independent).toHaveURL(/\/app$/);
-    await visit(independent, ride);
+    await signIn(independent, b.email);
     await expect(
-      independent.getByText("Awaiting guardian approval", { exact: true }),
+      independent
+        .getByRole("region", { name: "What changed", exact: true })
+        .getByRole("link", {
+          name: /^Avery is driving\. .+ · R7 neighborhood → R7 activity$/,
+        }),
     ).toBeVisible();
-    await expect(
-      independent.getByText("There is no confirmed driver.", { exact: false }),
-    ).toBeVisible();
-    const cf = independent.locator('[role="form"]').filter({
-      has: independent.getByRole("button", {
-        name: "Approve driver for selected children",
-        exact: true,
-      }),
-    });
-    await cf.getByLabel("R7 child B", { exact: true }).check();
-    await cf
-      .getByLabel(
-        "I explicitly consent to this driver, vehicle and plan for my selected children.",
-      )
-      .check();
-    await replayDenied(independent, a.context, () =>
-      cf
-        .getByRole("button", {
-          name: "Approve driver for selected children",
-          exact: true,
-        })
-        .click(),
-    );
     await visit(independent, ride);
     await independent.setViewportSize({ width: 390, height: 844 });
     await expect
@@ -424,147 +551,179 @@ test("R7 real adults preserve optional swaps, reset unavailable consent and pers
         ),
       )
       .toBe(true);
-    await approve(independent, "R7 child B");
+    await expect(badge(independent, "Covered")).toBeVisible();
+    await expect(nextStep(independent)).toHaveCount(0);
     await expect(
-      independent.getByText("Confirmed", { exact: true }),
-    ).toBeVisible();
+      independent.getByRole("button", { name: /Approve/ }),
+    ).toHaveCount(0);
     for (const page of [a.page, b.page, independent]) {
       await visit(page, ride);
-      await expect(page.getByText("Confirmed", { exact: true })).toBeVisible();
       await expect(
-        page.getByText("Replacement confirmed.", { exact: true }),
+        badge(page, page === a.page ? "You’re driving" : "Covered"),
       ).toBeVisible();
-      await openAction(page, "Review driver change");
+      await expect(driverCard(page)).toContainText(
+        page === a.page ? "You’re driving" : "Avery Guardian is driving",
+      );
+      await expect(driverCard(page)).toContainText("R7 candidate car");
       await expect(
-        page.getByRole("heading", {
-          name: "Replacement activity",
-          exact: true,
-        }),
+        (await changes(page, "The change went through")).last(),
       ).toBeVisible();
-      await closeAction(page, "Review driver change");
     }
-    // A second optional swap succeeds only with the new candidate's real acceptance and both families.
-    await replacement(a.page, "R7 original driver");
+    // A second optional swap needs the new driver's yes and nothing else.
+    await askToTakeOver(a.page, {
+      driver: "Devon Driver",
+      car: "R7 original van",
+      keeps: "You keep",
+      title: "Ask someone to take over",
+    });
     await visit(d.page, "/app/driving?pending=1");
     await d.page
-      .getByRole("link", { name: "Open ride details", exact: true })
+      .getByRole("region", { name: "Asked to drive", exact: true })
+      .getByRole("link", { name: /^R7 neighborhood → R7 activity, / })
       .click();
-    await accept(d.page);
-    await refresh(a.page);
-    await approve(a.page, "R7 child A");
-    await refresh(b.page);
-    await approve(b.page, "R7 child B");
-    await refresh(d.page);
+    await expect(d.page).toHaveURL(ride);
+    // Being asked again shows the request, not the addresses or the riders.
     await expect(
-      d.page.getByText("Replacement confirmed.", { exact: true }),
+      d.page.getByText(
+        "You’ll see the addresses and who’s riding once you’re the driver.",
+        { exact: true },
+      ),
     ).toBeVisible();
+    await expect(
+      d.page.getByText("Private R7 pickup", { exact: false }),
+    ).toHaveCount(0);
+    await expect(d.page.getByText("R7 child", { exact: false })).toHaveCount(0);
+    // A keeps the ride until Devon answers.
+    expect(await state("mode", "coverage", "current_driver_name")).toEqual([
+      "optional_swap",
+      "confirmed",
+      "Avery Guardian",
+    ]);
+    await accept(d.page, "Can you take over driving?", "R7 original van");
+    await expectToast(d.page, "You’re driving");
+    // Devon's yes is the swap: A is released and no family approves.
+    const takeover = await status();
+    expect([
+      takeover.mode,
+      takeover.coverage,
+      takeover.current_driver_name,
+      Boolean(takeover.accepted_at),
+    ]).toEqual(["optional_swap", "confirmed", "Devon Driver", true]);
+    await expect(badge(d.page, "You’re driving")).toBeVisible();
+    await expect(driverCard(d.page)).toContainText("You’re driving");
+    await expect(driverCard(d.page)).toContainText("R7 original van");
     await expect(
       d.page.getByText("Private R7 pickup", { exact: true }),
     ).toBeVisible();
-    // An unsuccessful new swap must preserve the actual driver's completed page and history.
-    const journey = (page, name) =>
-      page.getByRole("article", { name: `Journey for ${name}`, exact: true });
-    async function report(page, name, button) {
-      const form = journey(page, name)
-        .locator('[role="form"]')
-        .filter({
-          has: page.getByRole("button", { name: button, exact: true }),
-        });
-      await form.getByRole("checkbox").check();
-      await form.getByRole("button", { name: button, exact: true }).click();
+    for (const page of [a.page, b.page]) {
+      await refresh(page);
+      await expect(badge(page, "Covered")).toBeVisible();
+      await expect(nextStep(page)).toHaveCount(0);
+      await expect(page.getByRole("button", { name: /Approve/ })).toHaveCount(0);
+      await expect(driverCard(page)).toContainText("Devon Driver is driving");
     }
-    for (const [parent, name] of [
-      [a, "R7 child A"],
-      [b, "R7 child B"],
+    await expect(await changes(a.page, "The change went through")).toHaveCount(
+      2,
+    );
+    // The family that said nothing is told who took over.
+    await visit(b.page, "/app");
+    await expect(
+      b.page
+        .getByRole("region", { name: "What changed", exact: true })
+        .getByRole("link", {
+          name: /^Devon took over driving\. .+ · R7 neighborhood → R7 activity$/,
+        }),
+    ).toHaveAttribute("href", `/app/rides/${rideId}`);
+    await captureState(b.page, "home-what-changed", "What changed");
+
+    // An unsuccessful new swap must preserve the actual driver's completed page and history.
+    const child = (page, name) =>
+      page.getByRole("article", { name, exact: true });
+    // Putting a child on the ride named that guardian to meet them.
+    for (const [parent, name, guardian] of [
+      [a, "R7 child A", "Avery Guardian"],
+      [b, "R7 child B", "Blake Guardian"],
     ]) {
       await visit(parent.page, ride);
-      const article = journey(parent.page, name);
-      await article
-        .getByLabel(`Designated guardian for ${name}`)
-        .selectOption({ index: 1 });
-      await article.getByRole("checkbox").check();
-      await article
-        .getByRole("button", { name: "Save designated guardian", exact: true })
-        .click();
-      await expect(article.getByRole("status")).toContainText(
-        "Designated guardian saved",
-      );
+      const row = child(parent.page, name);
+      await expect(
+        row.getByText(`Who meets ${name}?`, { exact: true }),
+      ).toBeVisible();
+      await expect(row.getByText("You", { exact: true })).toBeVisible();
+      await expect(button(row, `I’ll meet ${name}`)).toHaveCount(0);
+      await expect(
+        child(d.page, name).getByText(guardian, { exact: true }),
+      ).toBeVisible();
     }
-    await replacement(a.page, "R7 Guardian A");
+    await askToTakeOver(b.page, swap);
     await visit(d.page, ride);
     for (const name of ["R7 child A", "R7 child B"]) {
-      await report(d.page, name, "Confirm pickup as driver");
-      await expect(
-        journey(d.page, name).getByText("Picked up", { exact: true }),
-      ).toBeVisible();
-      await report(d.page, name, "Report arrival");
-      await expect(
-        journey(d.page, name).getByText("Awaiting guardian receipt", {
-          exact: true,
-        }),
-      ).toBeVisible();
+      const row = child(d.page, name);
+      await button(row, `Picked up ${name}`).click();
+      await expect(row.getByText("Picked up", { exact: true })).toBeVisible();
+      await button(row, `Arrived with ${name}`).click();
+      await expect(row.getByText("Arrived", { exact: true })).toBeVisible();
     }
+    // The first pickup closed the open swap: Devon is the trip's driver.
+    expect(
+      await state("proposal_status", "coverage", "current_driver_name"),
+    ).toEqual(["invalidated", "confirmed", "Devon Driver"]);
     await visit(a.page, ride);
-    await captureState(a.page, "awaiting-handoff", "Pickup and handoffs");
+    await expect(badge(a.page, "Confirm handoff")).toBeVisible();
+    await expect(nextStep(a.page)).toHaveCount(0);
+    await expect(button(a.page, "Yes, I’ll drive")).toHaveCount(0);
+    await captureState(a.page, "awaiting-handoff", "Trip");
     for (const [parent, name] of [
       [a, "R7 child A"],
       [b, "R7 child B"],
     ]) {
       await visit(parent.page, ride);
-      await report(parent.page, name, "Confirm handoff as guardian");
-      await expect(
-        journey(parent.page, name).getByText("Handoff completed", {
-          exact: true,
-        }),
-      ).toBeVisible();
+      const row = child(parent.page, name);
+      await button(row, `I have ${name}`).click();
+      await expect(row.getByText("Handed off", { exact: true })).toBeVisible();
     }
+    const met = (page) => page.getByText(/ met R7 child [AB]$/);
     await visit(d.page, ride);
+    await expect(badge(d.page, "Completed")).toBeVisible();
     await expect(
-      d.page.getByText("Ride completed — every child’s handoff is confirmed.", {
-        exact: true,
-      }),
+      d.page.getByText("Every child was handed off.", { exact: true }),
     ).toBeVisible();
-    await captureState(d.page, "completed", "Pickup and handoffs");
-    await expect(
-      d.page.getByRole("heading", { name: "Ride activity", exact: true }),
-    ).toBeVisible();
-    await expect(
-      d.page.getByText("Handoff completed", { exact: true }),
-    ).toHaveCount(2);
+    await expect(driverCard(d.page)).toContainText("You drove");
+    await captureState(d.page, "completed", "Trip");
+    await expect(d.page.getByText("Handed off", { exact: true })).toHaveCount(
+      2,
+    );
+    await expect(met(d.page)).toHaveCount(2);
     await expect(
       d.page.getByRole("button", {
-        name: /Confirm pickup as driver|Report arrival|Withdraw as driver/,
+        name: /^(Picked up|Arrived with|I have|Stop driving|More$)/,
       }),
     ).toHaveCount(0);
-    await visit(a.page, `/app/schedule?date=${rideTimes.date}&timezone=UTC`);
+    await visit(
+      a.page,
+      `/app/schedule?from=${rideTimes.date}&date=${rideTimes.date}`,
+    );
     await expect(
-      a.page.getByText("Trip driver: R7 original driver", { exact: true }),
-    ).toBeVisible();
-    await expect(
-      a.page.getByText("Ride completed", { exact: true }),
+      a.page.getByRole("link", {
+        name: /^R7 neighborhood → R7 activity, .*, Completed\. Devon drove$/,
+      }),
     ).toBeVisible();
     const historyPage = await historySession.newPage();
-    await visit(historyPage, "/sign-in");
-    await historyPage.getByLabel("Email address").fill(d.email);
-    await historyPage.getByLabel("Password", { exact: true }).fill(password);
-    await historyPage
-      .getByRole("button", { name: "Sign in", exact: true })
-      .click();
-    await expect(historyPage).toHaveURL(/\/app$/);
+    await signIn(historyPage, d.email);
     await visit(historyPage, "/app/driving");
     await historyPage
-      .getByRole("link", { name: "Open ride details", exact: true })
+      .getByRole("link", {
+        name: /^R7 neighborhood → R7 activity, .*, Completed\. You drove$/,
+      })
       .click();
     await expect(historyPage.getByRole("heading", { level: 1 })).toHaveText(
       "R7 neighborhood → R7 activity",
     );
     await expandDetails(historyPage);
     await expect(
-      historyPage.getByRole("heading", { name: "Ride activity", exact: true }),
-    ).toBeVisible();
-    await expect(
-      historyPage.getByText("Handoff completed", { exact: true }),
+      historyPage.getByText("Handed off", { exact: true }),
     ).toHaveCount(2);
+    await expect(met(historyPage)).toHaveCount(2);
   } catch (error) {
     console.error(error.stack ?? String(error));
     throw error;

@@ -6,7 +6,7 @@ import {
 } from "expo-router";
 import { useSession } from "@/services/session";
 import { ApplicationShell } from "@/ui/shell";
-import { Paragraph } from "@/ui/elements";
+import { Loading } from "@/ui/elements";
 import { SessionProblem } from "@/ui/session-problem";
 import { INVITATION_SIGN_IN, protectedReturnPath } from "@/lib/auth/paths";
 export default function AppLayout() {
@@ -15,7 +15,7 @@ export default function AppLayout() {
   const params = useGlobalSearchParams();
   if (error) return <SessionProblem />;
   if (!ready)
-    return <Paragraph role="status">Checking your session…</Paragraph>;
+    return <Loading />;
   if (!user && ended === "switch-account")
     return <Redirect href={INVITATION_SIGN_IN} />;
   if (!user)

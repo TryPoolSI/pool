@@ -29,8 +29,9 @@ export default function Confirm() {
           : "Confirm your email"}
       </UI.Heading1>
       <UI.Paragraph>
-        Continue to use this single-use email link. If it has expired, request a
-        new one.
+        {type === "recovery"
+          ? "Continue to choose a new password. This link works once."
+          : "One more tap finishes setting up your account. This link works once."}
       </UI.Paragraph>
       <CommandForm
         fields={{

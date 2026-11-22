@@ -8,7 +8,17 @@ import { createClient, createEmailActionClient } from "@/lib/supabase/client";
 import { isConfirmedEmailUser, verifiedUser } from "@/lib/auth/identity";
 import { appReturnPath, emailLinkType, validTokenHash, INVITATIONS_PATH, INVITATION_SIGN_IN } from "@/lib/auth/paths";
 
-export type AuthState = { error?: string; message?: string };
+export type AuthState = {
+  error?: string;
+  message?: string;
+  // Sign-in failed only because the address is not confirmed yet: the one
+  // sign-in outcome that offers to send the confirmation email again.
+  unconfirmed?: boolean;
+};
+const confirmFirst: AuthState = {
+  error: "Confirm your email first. Open the link Pool sent you, then sign in.",
+  unconfirmed: true,
+};
 export const signupConfirmationCopy = [
   "Check your email for a confirmation link. If you already have an account, ",
   "sign in",
@@ -36,13 +46,22 @@ export async function signIn(_: AuthState, data: Fields): Promise<AuthState> {
     return { error: "Enter your email and password." };
   const client = await createClient();
   const { error } = await client.auth.signInWithPassword({ email, password });
+  // A request that never arrived is not a wrong password.
+  if (error && (isAuthRetryableFetchError(error) || rateLimited(error)))
+    return {
+      error: rateLimited(error)
+        ? "That’s too many tries. Wait a few minutes, then try again."
+        : "Pool couldn’t reach the server. Check your connection and try again.",
+    };
+  // Supabase reports this only after the password matched, so saying so does
+  // not reveal whether an address has an account.
+  if (error?.code === "email_not_confirmed") return confirmFirst;
   if (error)
     return {
       error:
-        "Unable to sign in. Check your email and password and confirm your email first, or try again shortly.",
+        "That email and password didn’t work. Check them and try again. If you just signed up, confirm your email first.",
     };
-  if (!(await verifiedUser(client)))
-    return { error: "Confirm your email before signing in." };
+  if (!(await verifiedUser(client))) return confirmFirst;
   const next = data.get("next");
   if (next === null && data.get("resume_invitation") === "yes") {
     const invitation = await pendingInvitation().catch(() => "");
@@ -56,7 +75,12 @@ export async function signUp(_: AuthState, data: Fields): Promise<AuthState> {
   const password = field(data, "password");
   if (!validEmail(email)) return { error: "Enter a valid email address." };
   if (!validPassword(password))
-    return { error: "Use a password between 12 and 128 characters." };
+    return {
+      error:
+        password.length > 128
+          ? "That password is too long. Keep it under 128 characters."
+          : "Use a password with at least 12 characters.",
+    };
   if (data.get("adult") !== "yes")
     return {
       error: "Pool accounts are for adults. Confirm that you are at least 18.",
@@ -68,7 +92,7 @@ export async function signUp(_: AuthState, data: Fields): Promise<AuthState> {
   if (error && rateLimited(error))
     return {
       error:
-        "Wait a few minutes before trying again or requesting another confirmation email.",
+        "That’s too many tries. Wait a few minutes, then try again.",
     };
   if (
     error &&
@@ -77,7 +101,7 @@ export async function signUp(_: AuthState, data: Fields): Promise<AuthState> {
   )
     return {
       error:
-        "Unable to create your account right now. Try again shortly, or sign in if you already have an account.",
+        "Pool couldn’t create your account just now. Try again in a moment, or sign in if you already have one.",
     };
   return { message: signupConfirmationCopy.join("") };
 }
@@ -113,7 +137,7 @@ export async function requestRecovery(
   if (error)
     return {
       error:
-        "Unable to send a recovery email right now. Please try again shortly.",
+        "Pool couldn’t send the reset email just now. Try again in a moment.",
     };
   return {
     message:
@@ -127,16 +151,23 @@ export async function resetPassword(
 ): Promise<AuthState> {
   const password = field(data, "password");
   if (!validPassword(password))
-    return { error: "Use a password between 12 and 128 characters." };
+    return {
+      error:
+        password.length > 128
+          ? "That password is too long. Keep it under 128 characters."
+          : "Use a password with at least 12 characters.",
+    };
   if (password !== field(data, "confirmation"))
-    return { error: "The passwords do not match." };
+    return {
+      error: "Those passwords don’t match. Type the same one in both fields.",
+    };
   const client = await createClient();
   if (!(await verifiedUser(client))) redirect("/auth/error");
   const { error } = await client.auth.updateUser({ password });
   if (error)
     return {
       error:
-        "Unable to update the password. Choose a different password or request a new recovery link.",
+        "Pool couldn’t save that password. Choose a different one, or ask for a new reset link.",
     };
   const finish = beginSessionEnd("password-updated");
   const { error: signOutError } = await client.auth
@@ -145,7 +176,7 @@ export async function resetPassword(
   if (signOutError)
     return {
       error:
-        "Your password changed, but sign-out failed. Try signing out again before leaving this device.",
+        "Your password changed, but Pool couldn’t sign you out. Sign out again before you leave this device.",
     };
   redirect("/sign-in?message=password-updated");
 }
@@ -156,7 +187,7 @@ export async function signOut(switchAccount = false): Promise<AuthState> {
   const { error } = await client.auth
     .signOut({ scope: "local" })
     .finally(finish);
-  if (error) return { error: "Unable to sign out. Please try again." };
+  if (error) return { error: "Pool couldn’t sign you out. Try again." };
   redirect(switchAccount ? INVITATION_SIGN_IN : "/sign-in?message=signed-out");
 }
 
@@ -172,7 +203,7 @@ export async function confirmEmail(data: Fields): Promise<AuthState> {
     if (error && (rateLimited(error) || isAuthRetryableFetchError(error)))
       return {
         error:
-          "Unable to confirm your email right now. Wait a moment and try again.",
+          "Pool couldn’t confirm your email just now. Wait a moment and try again.",
       };
     if (error || !isConfirmedEmailUser(data.user))
       redirect("/auth/error?type=signup");

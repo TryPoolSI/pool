@@ -5,46 +5,14 @@ import { createClient } from "@/lib/supabase/client";
 import type { Database } from "@/lib/supabase/database.types";
 import { useSession } from "@/services/session";
 import * as UI from "@/ui/elements";
-import { AddVehicleForm, Confirmation, DriverForm } from "./driver-form";
+import { styles } from "@/ui/styles";
+import { AddVehicleForm, DriverForm } from "./driver-form";
 
-type DriverOption =
+export type DriverOption =
   Database["public"]["Functions"]["driver_options"]["Returns"][number];
-
-function AddRideVehicle({
-  riderCount,
-  onSelected,
-}: {
-  riderCount: number;
-  onSelected: (id: string) => void;
-}) {
-  const [adding, setAdding] = useState(false);
-  const [message, setMessage] = useState("");
-  return (
-    <>
-      {adding ? (
-        <>
-          <AddVehicleForm
-            onVehicleSaved={({ id, passengerSeats }) => {
-              setAdding(false);
-              if (passengerSeats >= riderCount) {
-                onSelected(id);
-                setMessage("Car added.");
-              } else {
-                setMessage("Car added. It has too few passenger seats for this ride.");
-              }
-            }}
-          />
-          <UI.Button onPress={() => setAdding(false)}>Close vehicle form</UI.Button>
-        </>
-      ) : (
-        <UI.Button onPress={() => setAdding(true)}>Add a car</UI.Button>
-      )}
-      {message && <UI.Paragraph role="status">{message}</UI.Paragraph>}
-    </>
-  );
-}
-
-const nominationValue = (option: DriverOption) =>
+const plain = { marginVertical: 0 } as const;
+const firstName = (name: string) => name.trim().split(/\s+/)[0] || name;
+const optionValue = (option: DriverOption) =>
   [
     option.driver_id,
     option.driver_family_id,
@@ -52,67 +20,86 @@ const nominationValue = (option: DriverOption) =>
     option.vehicle_version,
   ].join("|");
 
-export function RideDriverNomination({
-  fields,
-  options,
-  riderCount,
-}: {
+// "Ask Alex to drive": one choice of person and car, one button. The same form
+// asks for a first driver and asks someone to take over from the current one.
+export function AskDriverForm(props: {
+  command: "proposeDriver" | "requestReplacement";
   fields: Record<string, string>;
   options: DriverOption[];
-  riderCount: number;
+  // What happens next, in one sentence, given the chosen driver's first name.
+  outcome: (name: string) => string;
 }) {
-  const { user } = useSession();
-  const [requestId] = useState(newRequestId);
-  const [selection, setSelection] = useState("");
-  const [addedId, setAddedId] = useState<string | null>(null);
-  const eligible = options.filter((option) => option.passenger_seats >= riderCount);
-  const addedOption = addedId && eligible.find(
-    (option) => option.vehicle_id === addedId && option.driver_id === user?.id,
-  );
-  const selectedOption = addedOption || eligible.find(
-    (option) => nominationValue(option) === selection,
-  );
-
+  // Each request gets its own id, so the sheet can be used again.
+  const [attempt, setAttempt] = useState(0);
   return (
-    <>
-      <AddRideVehicle riderCount={riderCount} onSelected={setAddedId} />
-      {eligible.length ? (
-        <DriverForm
-          command="proposeDriver"
-          fields={{ ...fields, proposal_id: requestId }}
-          label="Nominate driver"
-        >
-          <UI.Label>
-            Driver and registered vehicle
-            <UI.Select
-              name="driver_vehicle"
-              required
-              value={selectedOption ? nominationValue(selectedOption) : ""}
-              onChange={(event) => {
-                setAddedId(null);
-                setSelection(event.target.value);
-              }}
-            >
-              <UI.Option value="" disabled>Choose a circle adult and vehicle</UI.Option>
-              {eligible.map((option) => (
-                <UI.Option key={nominationValue(option)} value={nominationValue(option)}>
-                  {option.display_name} · {option.vehicle_label} ·{" "}
-                  {option.passenger_seats} passenger seats
-                </UI.Option>
-              ))}
-            </UI.Select>
-          </UI.Label>
-          <Confirmation>
-            I nominate this adult and vehicle for this ride’s current riders and plan.
-          </Confirmation>
-        </DriverForm>
-      ) : (
-        <UI.Paragraph>No registered vehicles have enough seats for this ride.</UI.Paragraph>
-      )}
-    </>
+    <AskDriverFields
+      key={attempt}
+      {...props}
+      onSent={() => setAttempt((count) => count + 1)}
+    />
   );
 }
 
+function AskDriverFields({
+  command,
+  fields,
+  options,
+  outcome,
+  onSent,
+}: Parameters<typeof AskDriverForm>[0] & { onSent: () => void }) {
+  const [requestId] = useState(newRequestId);
+  const [selection, setSelection] = useState("");
+  if (!options.length)
+    return (
+      <UI.Paragraph style={plain}>
+        Nobody else in this circle has a car with a seat for every rider yet.
+      </UI.Paragraph>
+    );
+  const chosen =
+    options.find((option) => optionValue(option) === selection) ?? options[0];
+  return (
+    <DriverForm
+      command={command}
+      fields={{
+        ...fields,
+        proposal_id: requestId,
+        driver_vehicle: optionValue(chosen),
+      }}
+      label={`Ask ${firstName(chosen.display_name)} to drive`}
+      after="close"
+      onResult={(result) => {
+        if (!result.error) onSent();
+      }}
+    >
+      {options.length > 1 ? (
+        <UI.Label>
+          Driver and car
+          <UI.Select
+            name="driver_choice"
+            value={optionValue(chosen)}
+            onChange={(event) => setSelection(event.target.value)}
+          >
+            {options.map((option) => (
+              <UI.Option key={optionValue(option)} value={optionValue(option)}>
+                {`${option.display_name} · ${option.vehicle_label} · ${option.passenger_seats} seats`}
+              </UI.Option>
+            ))}
+          </UI.Select>
+        </UI.Label>
+      ) : (
+        <UI.Paragraph style={plain}>
+          {`${chosen.display_name} would drive the ${chosen.vehicle_label}.`}
+        </UI.Paragraph>
+      )}
+      <UI.Paragraph style={[plain, styles.small]}>
+        {outcome(firstName(chosen.display_name))}
+      </UI.Paragraph>
+    </DriverForm>
+  );
+}
+
+// The driver switches to another of their own cars. Their yes goes with the
+// request, so the switch is done in one step and the families are told.
 export function RideVehicleChange({
   rideId,
   proposalId,
@@ -120,6 +107,8 @@ export function RideVehicleChange({
   riderCount,
   proposedVehicleId,
   assignedVehicleId,
+  needs = [],
+  first = false,
 }: {
   rideId: string;
   proposalId: string;
@@ -127,11 +116,17 @@ export function RideVehicleChange({
   riderCount: number;
   proposedVehicleId: string;
   assignedVehicleId?: string;
+  // Boosters and child seats these riders need, in words.
+  needs?: string[];
+  // The person was asked to drive and has not said yes: choosing a car is
+  // their yes.
+  first?: boolean;
 }) {
   const { user } = useSession();
   const [requestId] = useState(newRequestId);
   const [selection, setSelection] = useState("");
-  const [addedId, setAddedId] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [tooSmall, setTooSmall] = useState(false);
   const vehicles = useQuery({
     queryKey: ["account", user?.id, "active-driver-vehicles"],
     enabled: Boolean(user),
@@ -143,32 +138,32 @@ export function RideVehicleChange({
         .is("retired_at", null)
         .order("label")
         .abortSignal(signal);
-      if (error) throw new Error("Your cars could not be loaded.");
+      if (error) throw new Error("Pool couldn’t load your cars.");
       return data;
     },
   });
-  const eligible = vehicles.data?.filter(
+  if (vehicles.isPending) return <UI.Loading />;
+  if (vehicles.isError)
+    return (
+      <>
+        <UI.Paragraph role="alert">
+          Pool couldn’t load your cars. Check your connection and try again.
+        </UI.Paragraph>
+        <UI.Button onPress={() => void vehicles.refetch()}>Try again</UI.Button>
+      </>
+    );
+  const eligible = vehicles.data.filter(
     (vehicle) =>
       vehicle.passenger_seats >= riderCount &&
       vehicle.id !== proposedVehicleId &&
       vehicle.id !== assignedVehicleId,
-  ) ?? [];
-  const added = eligible.find((vehicle) => vehicle.id === addedId);
-  const selectedVehicle = added ?? eligible.find(
-    (vehicle) => `${vehicle.id}|${vehicle.version}` === selection,
   );
+  const chosen =
+    eligible.find((vehicle) => vehicle.id === selection) ?? eligible[0];
 
   return (
-    <UI.Section>
-      <UI.Heading3>Use a different car</UI.Heading3>
-      <AddRideVehicle riderCount={riderCount} onSelected={setAddedId} />
-      {vehicles.isError && (
-        <>
-          <UI.Paragraph role="alert">Your cars could not be loaded.</UI.Paragraph>
-          <UI.Button onPress={() => void vehicles.refetch()}>Retry cars</UI.Button>
-        </>
-      )}
-      {eligible.length ? (
+    <>
+      {chosen ? (
         <DriverForm
           command="requestRideVehicleChange"
           fields={{
@@ -176,35 +171,73 @@ export function RideVehicleChange({
             ride_id: rideId,
             proposal_id: proposalId,
             revision: String(revision),
+            vehicle_selection: `${chosen.id}|${chosen.version}|${chosen.passenger_seats}`,
+            // With no boosters or child seats needed there is nothing to confirm.
+            ...(needs.length ? {} : { restraints: "yes" }),
+            ...(first ? { first: "yes" } : {}),
           }}
-          label="Request car change"
+          label={`Use the ${chosen.label}`}
+          after="close"
         >
-          <UI.Label>
-            Different car
-            <UI.Select
-              name="vehicle_selection"
-              required
-              value={selectedVehicle ? `${selectedVehicle.id}|${selectedVehicle.version}` : ""}
-              onChange={(event) => {
-                setAddedId(null);
-                setSelection(event.target.value);
-              }}
-            >
-              <UI.Option value="" disabled>Choose one of your cars</UI.Option>
-              {eligible.map((vehicle) => (
-                <UI.Option key={vehicle.id} value={`${vehicle.id}|${vehicle.version}`}>
-                  {vehicle.label} · {vehicle.passenger_seats} passenger seats
-                </UI.Option>
-              ))}
-            </UI.Select>
-          </UI.Label>
-          <Confirmation>
-            I request this car for the ride. The driver and every participating family must approve again.
-          </Confirmation>
+          {eligible.length > 1 && (
+            <UI.Label>
+              Car
+              <UI.Select
+                name="car_choice"
+                value={chosen.id}
+                onChange={(event) => setSelection(event.target.value)}
+              >
+                {eligible.map((vehicle) => (
+                  <UI.Option key={vehicle.id} value={vehicle.id}>
+                    {`${vehicle.label} · ${vehicle.passenger_seats} seats`}
+                  </UI.Option>
+                ))}
+              </UI.Select>
+            </UI.Label>
+          )}
+          {needs.length > 0 && (
+            <UI.Label className="checkbox-label">
+              <UI.Field
+                type="checkbox"
+                name="restraints"
+                value="yes"
+                required
+              />
+              {`I have ${needs.join(" and ")} in this car`}
+            </UI.Label>
+          )}
+          <UI.Paragraph style={[plain, styles.small]}>
+            {first
+              ? "You’re the driver as soon as you tap. The families on this ride are told."
+              : "The families on this ride will see the new car."}
+          </UI.Paragraph>
         </DriverForm>
-      ) : vehicles.isSuccess && (
-        <UI.Paragraph>No other registered cars have enough seats for this ride.</UI.Paragraph>
+      ) : (
+        <UI.Paragraph style={plain}>
+          {tooSmall
+            ? "That car doesn’t have a seat for every rider. Add a bigger one to switch."
+            : "You don’t have another car with a seat for every rider. Add one to switch."}
+        </UI.Paragraph>
       )}
-    </UI.Section>
+      {adding ? (
+        <>
+          <AddVehicleForm
+            after="inline"
+            onVehicleSaved={({ id, passengerSeats }) => {
+              setAdding(false);
+              setTooSmall(passengerSeats < riderCount);
+              if (passengerSeats >= riderCount) setSelection(id);
+            }}
+          />
+          <UI.Button className="quiet" onPress={() => setAdding(false)}>
+            Never mind
+          </UI.Button>
+        </>
+      ) : (
+        <UI.Button className="quiet" onPress={() => setAdding(true)}>
+          Add another car
+        </UI.Button>
+      )}
+    </>
   );
 }

@@ -1,6 +1,12 @@
 import { test, expect } from "@playwright/test";
 import { AxeBuilder } from "@axe-core/playwright";
-import { account, addChild, family, openAction } from "./helpers.mjs";
+import {
+  account,
+  addChild,
+  expectToast,
+  family,
+  openAction,
+} from "./helpers.mjs";
 import { captureState } from "./presentation.mjs";
 async function accessible(page) {
   const results = await new AxeBuilder({ page })
@@ -42,6 +48,7 @@ test("R8 shared layouts retain desktop composition, mobile navigation, keyboard 
 }) => {
   const person = await account(browser, "expo-presentation"),
     page = person.page;
+  const days = page.getByRole("tablist", { name: "Days this week", exact: true });
   try {
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(
@@ -53,37 +60,53 @@ test("R8 shared layouts retain desktop composition, mobile navigation, keyboard 
         .getByRole("heading", { level: 1 })
         .evaluate((n) => getComputedStyle(n).fontFamily),
     ).toContain("Manrope");
-    const menu = page.getByRole("button", { name: "Menu", exact: true });
+    // The phone's setup links and sign-out live in the Account sheet.
+    await expect(page.getByRole("button", { name: "Menu", exact: true })).toHaveCount(0);
+    const menu = page.getByRole("button", { name: "Account", exact: true });
     await menu.focus();
     await page.keyboard.press("Enter");
-    const dialog = page.getByRole("dialog", { name: "Your Pool", exact: true });
+    const dialog = page.getByRole("dialog", { name: "Account", exact: true });
     await expect(dialog).toBeVisible();
-    await expect(
-      dialog.getByRole("button", { name: "Close Your Pool", exact: true }),
-    ).toBeFocused();
+    const closeAccount = dialog.getByRole("button", {
+      name: "Close Account",
+      exact: true,
+    });
+    await expect(closeAccount).toBeFocused();
+    // Sheets have no "Done": the last control is the sheet's own last action.
+    await expect(dialog.getByRole("button", { name: "Done", exact: true })).toHaveCount(0);
     for (let cycle = 0; cycle < 5; cycle++) {
       await page.keyboard.press("Shift+Tab");
       await expect(
-        dialog.getByRole("button", { name: "Done", exact: true }),
+        dialog.getByRole("button", { name: "Sign out", exact: true }),
       ).toBeFocused();
       await page.keyboard.press("Tab");
-      await expect(
-        dialog.getByRole("button", { name: "Close Your Pool", exact: true }),
-      ).toBeFocused();
+      await expect(closeAccount).toBeFocused();
     }
+    await expect(dialog.getByRole("contentinfo")).toHaveText(/^Pool v\d+\.\d+\.\d+$/);
+    await accessible(page);
     await page.keyboard.press("Escape");
     await expect(dialog).not.toBeVisible();
     await expect(menu).toBeFocused();
     await menu.click();
-    await dialog.getByRole("link", { name: "Schedule", exact: true }).click();
+    await expect(closeAccount).toBeFocused();
+    await dialog.getByRole("link", { name: "Cars", exact: true }).click();
+    await expect(page).toHaveURL(/\/app\/vehicles$/);
+    await expect(dialog).toHaveCount(0);
+    const phoneNav = page.getByRole("navigation", { name: "Phone navigation" });
+    await phoneNav.getByRole("link", { name: "Schedule", exact: true }).click();
     await expect(page).toHaveURL(/\/app\/schedule$/);
-    await expect(dialog).not.toBeVisible();
-    await expect(page.getByRole("group", { name: "Full week" })).toBeVisible();
-    await expect(page.getByTestId("week-day")).toHaveCount(7);
+    // Seven days starting today, with today chosen.
+    await expect(days.getByRole("tab")).toHaveCount(7);
+    await expect(days.getByRole("tab").first()).toHaveAccessibleName(/, today, no rides$/);
+    await expect(days.getByRole("tab", { selected: true })).toHaveAccessibleName(
+      /, today, /,
+    );
+    await expect(
+      page.getByRole("tabpanel").getByRole("heading", { name: "Today", exact: true }),
+    ).toBeVisible();
     await accessible(page);
     await captureState(page, "schedule");
     await page.setViewportSize({ width: 320, height: 844 });
-    const phoneNav = page.getByRole("navigation", { name: "Phone navigation" });
     const tabs = await phoneNav.getByRole("link").evaluateAll((links) =>
       links.map((link) => {
         const { width, height } = link.getBoundingClientRect();
@@ -96,20 +119,53 @@ test("R8 shared layouts retain desktop composition, mobile navigation, keyboard 
     );
     const tabWidths = tabs.map(({ width }) => width);
     expect(Math.max(...tabWidths) - Math.min(...tabWidths)).toBeLessThan(1);
+    // The round "Plan a ride" button sits beside the tab bar.
+    const planButton = await page
+      .getByRole("link", { name: "Plan a ride", exact: true })
+      .last()
+      .boundingBox();
+    expect(planButton.width).toBeGreaterThanOrEqual(44);
+    expect(planButton.height).toBeGreaterThanOrEqual(44);
+    expect(planButton.x + planButton.width).toBeLessThanOrEqual(320);
     const weekNavigation = page.getByRole("navigation", {
-      name: "Schedule weeks",
+      name: "Weeks",
+      exact: true,
     });
     const previous = await weekNavigation
-      .getByRole("link", { name: "Previous week", exact: true })
+      .getByRole("button", { name: "Previous week", exact: true })
       .boundingBox();
     const next = await weekNavigation
-      .getByRole("link", { name: "Next week", exact: true })
+      .getByRole("button", { name: "Next week", exact: true })
       .boundingBox();
     expect(next.y).toBeCloseTo(previous.y, 0);
+    for (const control of [previous, next]) {
+      expect(control.width).toBeGreaterThanOrEqual(44);
+      expect(control.height).toBeGreaterThanOrEqual(44);
+    }
+    for (const day of await days.getByRole("tab").all()) {
+      const bounds = await day.boundingBox();
+      expect(bounds.width).toBeGreaterThanOrEqual(44);
+      expect(bounds.height).toBeGreaterThanOrEqual(44);
+      expect(bounds.x).toBeGreaterThanOrEqual(0);
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(320);
+    }
     await accessible(page);
+    // "Today" returns from another week, and only shows when away from it.
+    await expect(weekNavigation.getByRole("button", { name: "Today", exact: true })).toHaveCount(0);
+    await weekNavigation.getByRole("button", { name: "Next week", exact: true }).click();
+    await expect(days.getByRole("tab", { name: /, today, / })).toHaveCount(0);
+    await accessible(page);
+    await weekNavigation.getByRole("button", { name: "Today", exact: true }).click();
+    await expect(page).toHaveURL(/\/app\/schedule$/);
+    await expect(days.getByRole("tab", { selected: true })).toHaveAccessibleName(
+      /, today, /,
+    );
     await page.setViewportSize({ width: 390, height: 844 });
+    // An account without a family lands on the welcome form, already open.
     await page.goto("/app/profile");
-    await page.getByRole("button", { name: "Create a family", exact: true }).click();
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Welcome to Pool" }),
+    ).toBeVisible();
     await page.getByLabel("Family name", { exact: true }).fill(" ");
     await page.getByLabel("Your name", { exact: true }).fill("Presentation guardian");
     await page.getByRole("button", { name: "Create family", exact: true }).click();
@@ -120,6 +176,10 @@ test("R8 shared layouts retain desktop composition, mobile navigation, keyboard 
       phoneNav.getByRole("link", { name: "Home", exact: true }),
     ).not.toHaveAttribute("aria-current", "page");
     await expect(page.getByRole("heading", { level: 1 })).toBeInViewport();
+    // A detail screen has its own way back on a phone.
+    await expect(
+      page.getByRole("button", { name: "Go back", exact: true }),
+    ).toBeVisible();
     await accessible(page);
     await captureState(page, "family");
     await checkHomeLogo(page, phoneNav);
@@ -127,29 +187,46 @@ test("R8 shared layouts retain desktop composition, mobile navigation, keyboard 
     await expect(dialog.getByRole("link", { name: "Children", exact: true })).toHaveCount(0);
     await dialog.getByRole("link", { name: "My family", exact: true }).click();
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Presentation family");
+    // Following a link from the sheet closes it; it hands focus back as it goes.
+    await expect(dialog).toHaveCount(0);
     const createCircle = page.getByRole("button", {
       name: "Create a circle",
       exact: true,
     });
     await openAction(page, "Create a circle");
-    await accessible(page);
     await expect(
       page.getByRole("button", { name: "Close Create a circle", exact: true }),
     ).toBeFocused();
+    await accessible(page);
     await page.keyboard.press("Escape");
+    await expect(
+      page.getByRole("dialog", { name: "Create a circle", exact: true }),
+    ).toHaveCount(0);
     await expect(createCircle).toBeFocused();
     await openAction(page, "Create a circle");
     await page.getByLabel("Circle name").fill("Presentation circle");
     await page
       .getByRole("button", { name: "Create circle", exact: true })
       .click();
-    await page.getByRole("link", { name: "Open saved membership" }).click();
+    // The saved circle opens by itself, the sheet is gone and a toast confirms.
+    await expectToast(page, "Circle created");
+    await expect(page).toHaveURL(/\/app\/circles\/[a-f0-9-]{36}$/);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(
+      page.getByRole("link", { name: /^Open saved/ }),
+    ).toHaveCount(0);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+      "Presentation circle",
+    );
     await expect(page.getByRole("heading", { level: 1 })).toBeInViewport();
+    // The toast leaves by itself.
+    await expect(page.getByTestId("toast")).toHaveCount(0);
     await accessible(page);
     await captureState(page, "circle");
     await page.goto(familyUrl);
     await addChild(page, "Presentation child");
     await page.goto("/app/rides/new");
+    await expect(page.getByLabel("Presentation child", { exact: true })).toBeChecked();
     await accessible(page);
     await captureState(page, "planning");
     for (const path of [
@@ -167,8 +244,15 @@ test("R8 shared layouts retain desktop composition, mobile navigation, keyboard 
         await accessible(page);
       }
     }
+    // A link with a date Pool cannot read opens on today instead of failing.
+    await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/app/schedule?date=invalid&timezone=UTC");
-    await expect(page.getByRole("alert")).toContainText("Choose a valid date");
+    await expect(days.getByRole("tab")).toHaveCount(7);
+    await expect(days.getByRole("tab", { selected: true })).toHaveAccessibleName(
+      /, today, /,
+    );
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(page.getByText(/UTC|GMT/)).toHaveCount(0);
     await accessible(page);
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto("/app");
@@ -194,6 +278,27 @@ test("R8 shared layouts retain desktop composition, mobile navigation, keyboard 
     );
     expect(iconOffsets).toHaveLength(4);
     expect(new Set(iconOffsets).size).toBe(1);
+    // Setup lives in the sidebar on a wide screen, and the account row opens
+    // the same sheet without repeating those links.
+    const setup = page.getByRole("navigation", { name: "Your setup", exact: true });
+    await expect(setup.getByRole("link")).toHaveText([
+      "My family",
+      "Cars",
+      "Invitations",
+      "Profile",
+    ]);
+    await expect(setup.getByRole("link", { name: "My family", exact: true })).toHaveAttribute(
+      "href",
+      new URL(familyUrl).pathname,
+    );
+    await menu.click();
+    await expect(closeAccount).toBeFocused();
+    await expect(dialog.getByRole("link")).toHaveCount(0);
+    await expect(dialog.getByRole("button", { name: "Sign out", exact: true })).toBeVisible();
+    await accessible(page);
+    await page.keyboard.press("Escape");
+    await expect(dialog).not.toBeVisible();
+    await expect(menu).toBeFocused();
     const newTab = page.context().waitForEvent("page");
     await sidebar
       .getByRole("link", { name: "Schedule", exact: true })
@@ -215,9 +320,23 @@ test("R8 shared layouts retain desktop composition, mobile navigation, keyboard 
     await checkHomeLogo(page, sidebar);
     await sidebar.getByRole("link", { name: "Home", exact: true }).click();
     await expect(page).toHaveURL(/\/app$/);
-    await expect(page.getByRole("link", { name: /Presentation family/ })).toBeVisible();
+    // Home names the family and its circles, and has nothing left to set up.
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Home");
+    await expect(
+      page.getByRole("main").getByText("Presentation family", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("main").getByRole("link", { name: "Presentation circle" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("region", { name: "Needs a driver", exact: true }),
+    ).toContainText("No rides this week");
     await expect(page.getByRole("button", { name: /^Create (a )?family$/ })).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Refresh current data" }),
+    ).toHaveCount(0);
     await accessible(page);
+    await captureState(page, "home");
     await page.emulateMedia({ colorScheme: "dark" });
     expect(
       await page.evaluate(

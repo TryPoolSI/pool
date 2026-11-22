@@ -37,26 +37,36 @@ export async function setup(status) {
   const car=await ok(d.db,"save_vehicle",{p_id:crypto.randomUUID(),p_label:"R6 vehicle",p_passenger_seats:3,p_version:0,p_retire:false});
   const firstRideStart = upcomingRideStart();
   let interval=0;
-  async function proposed({two=true,driver=d,driverFamily=d.family}={}) {
+  // A planned ride with no driver asked yet. respond=false leaves family B's
+  // invitation unanswered.
+  async function planned({two=true,respond=true}={}) {
     const start = hoursFrom(firstRideStart, interval * 2);
     const end = hoursFrom(firstRideStart, interval * 2 + 1);
     interval++;
     const ride=await ok(a.db,"create_ride",{p_id:crypto.randomUUID(),p_family_id:a.family,p_circle_id:circle,p_pickup_summary:"R6 pickup",p_destination_summary:"R6 drop-off",p_pickup:"R6 private start",p_destination:"R6 private end",p_direction:"outbound",p_starts_at:start,p_ends_at:end,p_timezone:"UTC",p_child_ids:[children[0]],p_invited_family_ids:two?[b.family]:[]});
-    if(two) await ok(b.db,"respond_to_ride_invitation",{p_ride_id:ride,p_family_id:b.family,p_revision:1,p_accept:true,p_child_ids:[children[1]]});
+    if(two&&respond) await ok(b.db,"respond_to_ride_invitation",{p_ride_id:ride,p_family_id:b.family,p_revision:1,p_accept:true,p_child_ids:[children[1]]});
+    return {ride,revision:two&&respond?2:1,two,start,end};
+  }
+  async function proposed({two=true,driver=d,driverFamily=d.family}={}) {
+    const {ride,start,end}=await planned({two});
     let vehicle=car;
     if(driver!==d) vehicle=await ok(driver.db,"save_vehicle",{p_id:crypto.randomUUID(),p_label:"Self car",p_passenger_seats:3,p_version:0,p_retire:false});
     const proposal=await ok(a.db,"propose_driver",{p_id:crypto.randomUUID(),p_ride_id:ride,p_family_id:a.family,p_revision:two?2:1,p_driver_id:driver.id,p_driver_family_id:driverFamily,p_vehicle_id:vehicle,p_vehicle_version:1});
     const revision=two?3:2,reply={p_id:proposal,p_revision:revision};
     return {ride,revision,reply,vehicle,driver,two,start,end};
   }
-  async function confirmed({consenter=b,...options}={}) {
+  // The driver's yes confirms the ride. Family consent is optional: it is still
+  // recorded by default so the same fixture confirms a ride on the schemas the
+  // upgrade path starts from, and so revocation keeps real rows to act on.
+  async function confirmed({consenter=b,consent=true,...options}={}) {
     const ride = await proposed(options);
     await ok(ride.driver.db,"accept_driver_proposal",{...ride.reply,p_available_seats:3,p_restraints:true});
+    if(!consent) return ride;
     await ok(a.db,"consent_for_own_children",{...ride.reply,p_family_id:a.family,p_child_ids:[children[0]]});
     if(ride.two) await ok(consenter.db,"consent_for_own_children",{...ride.reply,p_family_id:b.family,p_child_ids:[children[1]]});
     return ride;
   }
-  return {a,b,d,out,bGuardian,driverGuardian,children,car,circle,proposed,confirmed,anon:client()};
+  return {a,b,d,out,bGuardian,driverGuardian,children,car,circle,planned,proposed,confirmed,anon:client()};
 }
 const designation=(r,child,recipient,version=0)=>({p_ride_id:r.ride,p_child_id:child,p_recipient_id:recipient,p_revision:r.revision,p_version:version});
 const command=(r,child,version)=>({p_request_id:crypto.randomUUID(),p_ride_id:r.ride,p_child_id:child,p_revision:r.revision,p_version:version});
@@ -78,7 +88,7 @@ export async function handoffUpgradeIdentity(status) {
   };
 }
 export async function handoffPermissionTests(status,sql) {
-  const {a,b,d,out,bGuardian,driverGuardian,children:[ca,cb],circle,car,confirmed,anon}=await setup(status);
+  const {a,b,d,out,bGuardian,driverGuardian,children:[ca,cb],circle,car,planned,confirmed,anon}=await setup(status);
   const pendingReceipts = async (db) => (await ok(db,"pending_handoff_receipts",{})).map(({ride_id}) => ride_id);
   await denied(anon,"pending_handoff_receipts",{});
   const r=await confirmed();
@@ -210,11 +220,51 @@ export async function handoffPermissionTests(status,sql) {
   await denied(a.db,"confirm_handoff",command(self,ca,2),"PT409");
   await ok(a.db,"report_arrival",command(self,ca,2));
   await ok(a.db,"confirm_handoff",command(self,ca,3));
-  // Valid recipient, but privileged corruption of consent/vehicle/roster must still fail at pickup.
-  for (const corruption of ["consent","capacity","roster","membership"]) {
+  // A confirmed driver and a recipient per child are enough to start: no family
+  // consent rows are needed. Rider edits before pickup keep a kept child's recipient.
+  const plain=await confirmed({consent:false});
+  assert.equal((await ok(b.db,"driver_status",{p_ride_id:plain.ride}))[0].coverage,"confirmed");
+  const cb2=await ok(b.db,"save_own_child",{p_id:crypto.randomUUID(),p_family_id:b.family,p_display_name:"Child B sibling",p_seat_requirement:"standard",p_revision:0});
+  const ownRiders={p_ride_id:plain.ride,p_family_id:b.family,p_revision:plain.revision};
+  const ownHandoffs=async()=>{
+    const rows=await b.db.from("ride_handoffs").select("child_id,recipient_id,version").eq("ride_id",plain.ride).eq("family_id",b.family);
+    assert.ifError(rows.error);return rows.data.sort((x,y)=>x.child_id.localeCompare(y.child_id));
+  };
+  const kept={child_id:cb,recipient_id:bGuardian.id,version:1};
+  assert.equal(await ok(b.db,"designate_recipient",designation(plain,cb,bGuardian.id)),1);
+  assert.equal(await ok(b.db,"set_own_ride_riders",{...ownRiders,p_child_ids:[cb,cb2]}),plain.revision,"Adding a rider who fits keeps the revision");
+  assert.deepEqual(await ownHandoffs(),[kept],"Adding a sibling keeps the first child's receiving guardian");
+  assert.equal(await ok(b.db,"designate_recipient",designation(plain,cb2,b.id)),1);
+  assert.equal((await ownHandoffs()).length,2);
+  assert.equal(await ok(b.db,"set_own_ride_riders",{...ownRiders,p_child_ids:[cb]}),plain.revision);
+  assert.deepEqual(await ownHandoffs(),[kept],"A kept child keeps its receiving guardian; a removed child's handoff is dropped");
+  assert.equal(sql(`select count(*) from public.ride_handoffs where ride_id='${plain.ride}' and child_id='${cb2}'`),"0");
+  await ok(a.db,"designate_recipient",designation(plain,ca,a.id));
+  assert.equal(sql(`select count(*) from public.ride_driver_consents where ride_id='${plain.ride}'`),"0");
+  assert.equal(await ok(d.db,"record_pickup",command(plain,ca,1)),"picked_up","Pickup starts without consent rows");
+  assert.equal(sql(`select count(*) from public.ride_trips where ride_id='${plain.ride}'`),"1");
+  // After the first pickup riders are fixed, whichever way the family edits them.
+  for(const riders of [[cb,cb2],[cb],[]]) await denied(b.db,"set_own_ride_riders",{...ownRiders,p_child_ids:riders},"PT423");
+  assert.deepEqual(await ownHandoffs(),[kept]);
+  await ok(d.db,"record_pickup",command(plain,cb,1));
+  for(const child of [ca,cb]) await ok(d.db,"report_arrival",command(plain,child,2));
+  await ok(a.db,"confirm_handoff",command(plain,ca,3));await ok(bGuardian.db,"confirm_handoff",command(plain,cb,3));
+  // An unanswered invitation does not hold up the driver or the pickup, and it
+  // can no longer be answered once the first child is in the car.
+  const waiting=await planned({respond:false});
+  const asked={p_id:await ok(a.db,"propose_driver",{p_id:crypto.randomUUID(),p_ride_id:waiting.ride,p_family_id:a.family,p_revision:1,p_driver_id:d.id,p_driver_family_id:d.family,p_vehicle_id:car,p_vehicle_version:1}),p_revision:2};
+  waiting.revision=2;
+  assert.equal(await ok(d.db,"accept_driver_proposal",{...asked,p_available_seats:3,p_restraints:true}),"confirmed","Accept confirms without consents or every reply");
+  await ok(a.db,"designate_recipient",designation(waiting,ca,a.id));
+  assert.equal(await ok(d.db,"record_pickup",command(waiting,ca,1)),"picked_up");
+  for(const reply of [{p_accept:true,p_child_ids:[cb]},{p_accept:false,p_child_ids:[]}])
+    await denied(b.db,"respond_to_ride_invitation",{p_ride_id:waiting.ride,p_family_id:b.family,p_revision:waiting.revision,...reply},"PT423");
+  assert.equal((await ok(b.db,"ride_offer",{p_id:waiting.ride}))[0].status,"invited");
+  await ok(d.db,"report_arrival",command(waiting,ca,2));await ok(a.db,"confirm_handoff",command(waiting,ca,3));
+  // Valid recipient, but privileged corruption of vehicle/roster/membership must still fail at pickup.
+  for (const corruption of ["capacity","roster","membership"]) {
     const x=await confirmed();
     await ok(a.db,"designate_recipient",designation(x,ca,a.id));await ok(b.db,"designate_recipient",designation(x,cb,b.id));
-    if(corruption==="consent") sql(`update public.ride_driver_consents set revoked_at=clock_timestamp() where proposal_id='${x.reply.p_id}' and child_id='${cb}'`);
     if(corruption==="capacity") sql(`update public.vehicles set passenger_seats=1 where id='${car}'`);
     if(corruption==="roster") sql(`update public.driver_proposals set roster=roster || '[{"child":"00000000-0000-0000-0000-000000000000","family":"${a.family}","seat":"booster"}]'::jsonb where id='${x.reply.p_id}'`);
     if(corruption==="membership") sql(`alter table public.family_members disable trigger driver_guardian_removed; update public.family_members set removed_at=clock_timestamp() where family_id='${b.family}' and user_id='${b.id}'; alter table public.family_members enable trigger driver_guardian_removed;`);
@@ -226,7 +276,7 @@ export async function handoffPermissionTests(status,sql) {
     await ok(d.db,"withdraw_driver",x.reply);
   }
   // Removing a designated recipient before pickup does not silently substitute
-  // another guardian. R5 consent remains valid, but R6 must refuse start.
+  // another guardian. The driver stays confirmed, but R6 must refuse start.
   const missing=await confirmed();
   await ok(a.db,"designate_recipient",designation(missing,ca,a.id));await ok(b.db,"designate_recipient",designation(missing,cb,bGuardian.id));
   await ok(b.db,"remove_family_member",{p_family_id:b.family,p_user_id:bGuardian.id});
@@ -290,5 +340,5 @@ export async function handoffPermissionTests(status,sql) {
   await denied(anon,"designate_recipient",da);await denied(anon,"trip_attention",{});
   await denied(a.db,"transition_child",{...command(r,ca,1),p_kind:"completed"});
   assert.ok((await a.db.schema("pool_private").rpc("start_trip",{p_ride:r.ride})).error);
-  console.log("R6 real-session checks passed: multi-child handoffs, recipient/actor authority, atomic idempotent events, privacy, first-pickup revalidation, active-trip guards and terminal protection.");
+  console.log("R6 real-session checks passed: multi-child handoffs, recipient/actor authority, atomic idempotent events, privacy, consent-free first-pickup revalidation, recipients kept across rider edits, active-trip guards and terminal protection.");
 }

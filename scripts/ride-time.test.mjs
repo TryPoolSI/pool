@@ -36,10 +36,13 @@ test("calendar weeks include dates with skipped Monday midnight in both adjacent
   assert.equal(dateInZone(new Date(after.from), "Asia/Tehran"), "2021-03-22");
   assert.equal(after.until, "2021-03-28T19:30:00.000Z");
   // Calendar range resolution must never relax validation of entered ride times.
-  for (const occurrence of ["reject", "earlier", "later"]) assert.throws(() => zonedInstant("2021-03-22T00:00", "Asia/Tehran", occurrence), /does not exist/);
+  for (const occurrence of ["reject", "earlier", "later"]) assert.throws(() => zonedInstant("2021-03-22T00:00", "Asia/Tehran", occurrence), /skipped when the clocks go forward/);
 });
-test("short ride times drop the year but keep the ride's own UTC offset", () => {
-  assert.equal(rideTimeShort("2026-11-19T12:40:00.000Z", "America/New_York"), "Thu, Nov 19, 7:40 AM GMT-5");
-  assert.equal(rideTimeShort("2026-07-02T12:40:00.000Z", "America/New_York"), "Thu, Jul 2, 8:40 AM GMT-4");
-  assert.equal(rideTimeShort("2027-01-01T00:15:00.000Z", "Asia/Kathmandu"), "Fri, Jan 1, 6:00 AM GMT+5:45");
+test("short ride times drop the year and show an offset only when it differs from the reader's", () => {
+  assert.equal(rideTimeShort("2026-11-19T12:40:00.000Z", "America/New_York", "America/Denver"), "Thu, Nov 19, 7:40 AM GMT-5");
+  assert.equal(rideTimeShort("2026-07-02T12:40:00.000Z", "America/New_York", "UTC"), "Thu, Jul 2, 8:40 AM GMT-4");
+  assert.equal(rideTimeShort("2027-01-01T00:15:00.000Z", "Asia/Kathmandu", "UTC"), "Fri, Jan 1, 6:00 AM GMT+5:45");
+  assert.equal(rideTimeShort("2026-11-19T12:40:00.000Z", "America/New_York", "America/New_York"), "Thu, Nov 19, 7:40 AM");
+  // Different zone names with the same offset at that moment read as local.
+  assert.equal(rideTimeShort("2026-11-19T12:40:00.000Z", "America/New_York", "America/Toronto"), "Thu, Nov 19, 7:40 AM");
 });

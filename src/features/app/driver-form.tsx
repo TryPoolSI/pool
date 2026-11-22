@@ -1,23 +1,34 @@
 import * as UI from "@/ui/elements";
-import { useState } from "react";
+import { useRef } from "react";
 import { CommandForm } from "@/ui/command-form";
 import { driverAction } from "@/services/driver-actions";
 import { newRequestId } from "@/lib/request-id";
+import { styles } from "@/ui/styles";
 
 type OnVehicleSaved = NonNullable<Parameters<typeof driverAction>[2]>;
 
+// One driver decision and one button. Fixed fields carry everything Pool
+// already knows, so the form shows only what the person has to choose.
 export function DriverForm({
   command,
   fields = {},
   label,
   children,
   onVehicleSaved,
+  onResult,
+  tone,
+  secondary,
+  after,
 }: {
   command: string;
-  fields?: Record<string, string>;
+  fields?: Record<string, string | string[]>;
   label: string;
   children?: React.ReactNode;
   onVehicleSaved?: OnVehicleSaved;
+  onResult?: (result: { error?: string }) => void;
+  tone?: "danger" | "quiet";
+  secondary?: boolean;
+  after?: "open" | "close" | "toast" | "inline";
 }) {
   const creates =
     command === "proposeDriver" ||
@@ -26,33 +37,54 @@ export function DriverForm({
     (command === "saveVehicle" && fields.version === "0");
   return (
     <CommandForm
-      key={creates ? undefined : fields.proposal_id}
+      key={creates ? undefined : String(fields.proposal_id ?? "")}
       action={(values) => driverAction({}, values, onVehicleSaved)}
       fields={{ command, ...fields }}
       label={label}
       creates={creates}
-      resultLabel="Open saved result"
+      onResult={onResult}
+      tone={tone}
+      secondary={secondary}
+      after={after}
     >
       {children}
     </CommandForm>
   );
 }
 
+// Adding a car never leaves the task: in a sheet it closes and confirms with
+// "<name> added"; inline it reports back through onVehicleSaved.
 export function AddVehicleForm({
   onVehicleSaved,
+  after,
 }: {
   onVehicleSaved?: OnVehicleSaved;
+  after?: "close" | "toast" | "inline";
 }) {
-  const [id] = useState(newRequestId);
+  const id = useRef<string | null>(null);
   return (
-    <DriverForm
-      command="saveVehicle"
-      fields={{ vehicle_id: id, version: "0" }}
-      label="Save vehicle"
-      onVehicleSaved={onVehicleSaved}
+    <CommandForm
+      action={async (values) => {
+        id.current ??= newRequestId();
+        const { path: _saved, ...result } = await driverAction(
+          {},
+          {
+            ...values,
+            command: "saveVehicle",
+            vehicle_id: id.current,
+            version: "0",
+          },
+          onVehicleSaved,
+        );
+        if (!result.error) id.current = null;
+        return result;
+      }}
+      label="Add car"
+      after={after}
+      resetOnSuccess
     >
       <VehicleFields />
-    </DriverForm>
+    </CommandForm>
   );
 }
 
@@ -64,9 +96,13 @@ export function Confirmation({ children }: { children: React.ReactNode }) {
     </UI.Label>
   );
 }
+const seatChoices = ["1", "2", "3", "4", "5", "6", "7"].map((value) => ({
+  value,
+  label: value,
+}));
 export function VehicleFields({
   label = "",
-  seats = 1,
+  seats = 4,
 }: {
   label?: string;
   seats?: number;
@@ -74,50 +110,38 @@ export function VehicleFields({
   return (
     <>
       <UI.Label>
-        Vehicle label
-        <UI.Field name="label" maxLength={80} defaultValue={label} required />
-      </UI.Label>
-      <UI.Label>
-        Passenger seats, excluding you
+        Car name
         <UI.Field
-          name="passenger_seats"
-          type="number"
-          min={1}
-          max={50}
-          step={1}
-          defaultValue={seats}
+          name="label"
+          maxLength={80}
+          defaultValue={label}
+          placeholder="Grey Civic"
+          autoComplete="off"
           required
         />
       </UI.Label>
+      <UI.Label>
+        Seats for passengers
+        {seats > seatChoices.length ? (
+          // A larger van saved earlier keeps its typed count.
+          <UI.Field
+            name="passenger_seats"
+            type="number"
+            min={1}
+            max={50}
+            step={1}
+            defaultValue={seats}
+            required
+          />
+        ) : (
+          <UI.Choice
+            name="passenger_seats"
+            defaultValue={String(seats)}
+            options={seatChoices}
+          />
+        )}
+        <UI.Inline style={styles.hint}>Don’t count the driver’s seat.</UI.Inline>
+      </UI.Label>
     </>
-  );
-}
-
-export function UTCDeadline({
-  value,
-  latest,
-}: {
-  value: string;
-  latest: string;
-}) {
-  const [local, setLocal] = useState(value.slice(0, 19));
-  return (
-    <UI.Label>
-      Review deadline in UTC
-      <UI.Field
-        type="datetime-local"
-        name="deadline_utc"
-        step="1"
-        required
-        value={local}
-        max={latest.slice(0, 19)}
-        onChange={(event) => setLocal(event.target.value)}
-      />
-      <UI.Field
-        type="hidden"
-        name="deadline"
-        value={local ? `${local}Z` : ""}
-      />
-    </UI.Label>
   );
 }

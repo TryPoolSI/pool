@@ -69,7 +69,24 @@ test("sign-in rejects provider errors/unconfirmed identities and validates the d
   auth.signInWithPassword.mock.mockImplementation(async () => ({
     error: { message: "provider secret" },
   }));
-  assert.match((await actions.signIn({}, data)).error, /Unable to sign in/);
+  const refusal = await actions.signIn({}, data);
+  const refused = refusal.error;
+  assert.match(refused, /email and password didn.t work/);
+  assert.doesNotMatch(refused, /provider secret/);
+  // Only an unconfirmed address offers to send the confirmation email again.
+  assert.equal(refusal.unconfirmed, undefined);
+  const confirmFirst = {
+    error: "Confirm your email first. Open the link Pool sent you, then sign in.",
+    unconfirmed: true,
+  };
+  auth.signInWithPassword.mock.mockImplementation(async () => ({
+    error: { code: "email_not_confirmed", message: "provider secret" },
+  }));
+  assert.deepEqual(await actions.signIn({}, data), confirmFirst);
+  auth.signInWithPassword.mock.mockImplementation(async () => ({
+    error: { code: "over_request_rate_limit", status: 429 },
+  }));
+  assert.equal((await actions.signIn({}, data)).unconfirmed, undefined);
   auth.signInWithPassword.mock.mockImplementation(async () => ({
     error: null,
   }));
@@ -77,7 +94,7 @@ test("sign-in rejects provider errors/unconfirmed identities and validates the d
     data: { user: { ...identity, email_confirmed_at: null } },
     error: null,
   }));
-  assert.match((await actions.signIn({}, data)).error, /Confirm your email/);
+  assert.deepEqual(await actions.signIn({}, data), confirmFirst);
   auth.getUser.mock.mockImplementation(async () => ({
     data: { user: identity },
     error: null,
@@ -100,8 +117,9 @@ test("signup validates adult attestation/password server-side and mail never tru
         form({ ...fields, adult: "yes", password: "short" }),
       )
     ).error,
-    /12 and 128/,
+    /at least 12 characters/,
   );
+  assert.equal(auth.signUp.mock.callCount(), 0);
   const state = await actions.signUp(
     {},
     form({ ...fields, adult: "yes", next: "https://evil.example" }),
@@ -149,7 +167,9 @@ test("signup masks duplicate accounts and gives actionable cooldown feedback", a
   auth.signUp.mock.mockImplementation(async () => ({
     error: { code: "over_email_send_rate_limit", message: "provider detail" },
   }));
-  assert.match((await actions.signUp({}, data)).error, /Wait.*confirmation email/);
+  const cooldown = (await actions.signUp({}, data)).error;
+  assert.match(cooldown, /too many tries\. Wait a few minutes/);
+  assert.doesNotMatch(cooldown, /provider detail/);
 });
 
 test("resend validates email and gives the same response for account-specific provider results", async () => {
@@ -185,10 +205,9 @@ test("recovery/reset failures are useful, do not expose provider details, and re
   auth.resetPasswordForEmail.mock.mockImplementation(async () => ({
     error: { message: "private provider detail" },
   }));
-  assert.match(
-    (await actions.requestRecovery({}, data)).error,
-    /try again shortly/,
-  );
+  const recovery = (await actions.requestRecovery({}, data)).error;
+  assert.match(recovery, /couldn.t send the reset email/);
+  assert.doesNotMatch(recovery, /private provider detail/);
   const passwords = form({
     password: "new-password-123",
     confirmation: "new-password-123",
@@ -209,10 +228,9 @@ test("recovery/reset failures are useful, do not expose provider details, and re
   auth.updateUser.mock.mockImplementation(async () => ({
     error: { message: "weak or reused" },
   }));
-  assert.match(
-    (await actions.resetPassword({}, passwords)).error,
-    /Choose a different password/,
-  );
+  const rejected = (await actions.resetPassword({}, passwords)).error;
+  assert.match(rejected, /couldn.t save that password\. Choose a different one/);
+  assert.doesNotMatch(rejected, /weak or reused/);
   auth.updateUser.mock.mockImplementation(async () => ({ error: null }));
   await assert.rejects(
     actions.resetPassword({}, passwords),
@@ -297,7 +315,9 @@ test("sign-out errors remain visible and regular sign-out ends only this session
   auth.signOut.mock.mockImplementation(async () => ({
     error: { message: "offline" },
   }));
-  assert.match((await actions.signOut()).error, /Unable to sign out/);
+  const failed = (await actions.signOut()).error;
+  assert.match(failed, /couldn.t sign you out/);
+  assert.doesNotMatch(failed, /offline/);
   auth.signOut.mock.mockImplementation(async () => ({ error: null }));
   await assert.rejects(
     actions.signOut(),

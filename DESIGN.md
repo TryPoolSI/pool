@@ -1,61 +1,59 @@
 ---
 name: Pool
-description: Share the driving. A calm, explicit record of who is driving whom.
+description: Share the driving. One design language for iOS and web, drawn from the Pool car logo.
 colors:
-  ledger-green: "#255741"
-  spring-lime: "#dfe9bd"
-  harvest-amber: "#785016"
-  harvest-amber-wash: "#faf0d8"
-  brick-error: "#952c22"
-  brick-error-wash: "#fff1ee"
-  brick-error-rule: "#ad4035"
-  pine-ink: "#253c35"
-  lichen-muted: "#5b6c64"
-  field-outline: "#718477"
-  hairline-sage: "#dce2d9"
-  meadow-wash: "#edf3e8"
-  sage-mist: "#f0f2ea"
-  morning-paper: "#f6f7f2"
-  surface-white: "#ffffff"
-  avatar-sage: "#e0e9d3"
-  avatar-sage-ink: "#354e31"
-  avatar-rose: "#f2dcd1"
-  avatar-rose-ink: "#6d4639"
-  avatar-blue: "#dce6ec"
-  avatar-blue-ink: "#375262"
-  focus-blue: "#537dce"
-  scrim-pine: "#152e2566"
+  canvas: "#F2F8FB"
+  surface: "#FFFFFF"
+  tint: "#E6F2F8"
+  cream: "#FBF1DE"
+  ink: "#14294A"
+  muted: "#55657F"
+  line: "#D8E5ED"
+  outline: "#7D93A8"
+  sky: "#2BBDE6"
+  sky-pressed: "#17A5D1"
+  blue: "#0A6F9A"
+  sky-wash: "#E3F5FB"
+  sun: "#F5C01E"
+  sun-ink: "#7A4A00"
+  sun-wash: "#FFF4CF"
+  coral: "#F06656"
+  coral-ink: "#A62B1C"
+  coral-wash: "#FFEDEA"
+  avatar-sky: "#CDEEFA"
+  avatar-sky-ink: "#0A5578"
+  avatar-sun: "#FFE7A3"
+  avatar-sun-ink: "#6B4300"
+  avatar-coral: "#FFD8D2"
+  avatar-coral-ink: "#8A2A1E"
+  glass: "#FFFFFFB8"
+  scrim: "#14294A5C"
+  focus: "#14294A"
 typography:
   brand:
     fontFamily: "Manrope, sans-serif"
-    fontSize: "37px"
+    fontSize: "32px"
     fontWeight: 800
-    lineHeight: "42px"
-    letterSpacing: "-2px"
+    lineHeight: "38px"
+    letterSpacing: "-1.4px"
   headline:
     fontFamily: "Manrope, sans-serif"
-    fontSize: "36px"
-    fontWeight: 700
-    lineHeight: "45px"
-    letterSpacing: "-1.3px"
-  headline-compact:
+    fontSize: "32px"
+    fontWeight: 800
+    lineHeight: "38px"
+    letterSpacing: "-0.9px"
+  headline-phone:
     fontFamily: "Manrope, sans-serif"
     fontSize: "28px"
-    fontWeight: 700
-    lineHeight: "36px"
-    letterSpacing: "-0.9px"
-  status-figure:
-    fontFamily: "Manrope, sans-serif"
-    fontSize: "36px"
-    fontWeight: 700
-    lineHeight: "44px"
-    letterSpacing: "-1px"
+    fontWeight: 800
+    lineHeight: "34px"
+    letterSpacing: "-0.7px"
   title:
     fontFamily: "Manrope, sans-serif"
-    fontSize: "22px"
+    fontSize: "20px"
     fontWeight: 700
-    lineHeight: "30px"
-    letterSpacing: "-0.55px"
+    lineHeight: "26px"
+    letterSpacing: "-0.3px"
   title-small:
     fontFamily: "Manrope, sans-serif"
     fontSize: "17px"
@@ -63,51 +61,40 @@ typography:
     lineHeight: "24px"
   body:
     fontFamily: "DM Sans, sans-serif"
-    fontSize: "15px"
-    fontWeight: 400
-    lineHeight: "23px"
-  body-small:
-    fontFamily: "DM Sans, sans-serif"
-    fontSize: "13px"
-    fontWeight: 400
-    lineHeight: "20px"
-  field:
-    fontFamily: "DM Sans, sans-serif"
     fontSize: "16px"
     fontWeight: 400
-    lineHeight: "23px"
-  label:
+    lineHeight: "24px"
+  body-small:
+    fontFamily: "DM Sans, sans-serif"
+    fontSize: "14px"
+    fontWeight: 400
+    lineHeight: "20px"
+  button:
+    fontFamily: "DM Sans, sans-serif"
+    fontSize: "16px"
+    fontWeight: 600
+    lineHeight: "22px"
+  field-label:
     fontFamily: "DM Sans, sans-serif"
     fontSize: "14px"
     fontWeight: 600
-    lineHeight: "21px"
-  field-label:
-    fontFamily: "DM Sans, sans-serif"
-    fontSize: "13px"
-    fontWeight: 600
     lineHeight: "20px"
-  eyebrow:
-    fontFamily: "DM Sans, sans-serif"
-    fontSize: "12px"
-    fontWeight: 700
-    lineHeight: "18px"
-    letterSpacing: "1.1px"
   badge:
     fontFamily: "DM Sans, sans-serif"
-    fontSize: "12px"
+    fontSize: "13px"
     fontWeight: 700
-    lineHeight: "19px"
+    lineHeight: "18px"
+  caption:
+    fontFamily: "DM Sans, sans-serif"
+    fontSize: "12px"
+    fontWeight: 400
+    lineHeight: "16px"
 rounded:
-  check: "4px"
-  alert: "6px"
-  field: "8px"
-  button: "9px"
-  tile: "10px"
-  card: "12px"
-  panel: "15px"
-  dialog: "18px"
-  pill: "20px"
-  full: "9999px"
+  sm: "8px"
+  md: "14px"
+  lg: "20px"
+  xl: "28px"
+  full: "999px"
 spacing:
   xs: "4px"
   sm: "8px"
@@ -115,251 +102,335 @@ spacing:
   lg: "16px"
   xl: "20px"
   xxl: "24px"
+  xxxl: "32px"
 components:
   button-primary:
-    backgroundColor: "{colors.ledger-green}"
-    textColor: "{colors.surface-white}"
-    typography: "{typography.label}"
-    rounded: "{rounded.button}"
-    padding: "10px 16px"
-    height: "44px"
+    backgroundColor: "{colors.sky}"
+    textColor: "{colors.ink}"
+    typography: "{typography.button}"
+    rounded: "{rounded.md}"
+    padding: "12px 20px"
+    height: "48px"
   button-secondary:
-    backgroundColor: "{colors.surface-white}"
-    textColor: "{colors.pine-ink}"
-    typography: "{typography.label}"
-    rounded: "{rounded.button}"
-    padding: "10px 16px"
-    height: "44px"
-  button-icon:
-    backgroundColor: "{colors.surface-white}"
-    textColor: "{colors.pine-ink}"
-    rounded: "{rounded.button}"
-    size: "44px"
-  text-link:
-    textColor: "{colors.ledger-green}"
-    typography: "{typography.label}"
-    height: "44px"
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.ink}"
+    typography: "{typography.button}"
+    rounded: "{rounded.md}"
+    padding: "12px 20px"
+    height: "48px"
+  button-danger:
+    backgroundColor: "{colors.coral-wash}"
+    textColor: "{colors.coral-ink}"
+    typography: "{typography.button}"
+    rounded: "{rounded.md}"
+    height: "48px"
+  button-quiet:
+    backgroundColor: "transparent"
+    textColor: "{colors.blue}"
+    typography: "{typography.button}"
+    height: "48px"
   input-field:
-    backgroundColor: "{colors.surface-white}"
-    textColor: "{colors.pine-ink}"
-    typography: "{typography.field}"
-    rounded: "{rounded.field}"
-    padding: "10px 12px"
-    height: "46px"
-  panel:
-    backgroundColor: "{colors.surface-white}"
-    rounded: "{rounded.panel}"
-    padding: "24px"
-  notice:
-    backgroundColor: "{colors.meadow-wash}"
-    textColor: "{colors.ledger-green}"
-    rounded: "{rounded.card}"
-    padding: "16px"
-  alert-error:
-    backgroundColor: "{colors.brick-error-wash}"
-    textColor: "{colors.brick-error}"
-    rounded: "{rounded.alert}"
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.ink}"
+    typography: "{typography.body}"
+    rounded: "{rounded.md}"
     padding: "12px 16px"
+    height: "48px"
+  card:
+    backgroundColor: "{colors.surface}"
+    rounded: "{rounded.lg}"
+    padding: "20px"
+  sheet:
+    backgroundColor: "{colors.surface}"
+    rounded: "{rounded.xl}"
   status-badge-neutral:
-    backgroundColor: "{colors.sage-mist}"
-    textColor: "{colors.lichen-muted}"
+    backgroundColor: "{colors.tint}"
+    textColor: "{colors.muted}"
     typography: "{typography.badge}"
-    rounded: "{rounded.pill}"
-    padding: "4px 9px"
-  status-badge-positive:
-    backgroundColor: "{colors.meadow-wash}"
-    textColor: "{colors.ledger-green}"
-    typography: "{typography.badge}"
-    rounded: "{rounded.pill}"
-    padding: "4px 9px"
-  status-badge-attention:
-    backgroundColor: "{colors.harvest-amber-wash}"
-    textColor: "{colors.harvest-amber}"
-    typography: "{typography.badge}"
-    rounded: "{rounded.pill}"
-    padding: "4px 9px"
-  icon-disc:
-    backgroundColor: "{colors.spring-lime}"
-    textColor: "{colors.pine-ink}"
     rounded: "{rounded.full}"
-    size: "36px"
-  task-icon:
-    backgroundColor: "{colors.harvest-amber-wash}"
-    textColor: "{colors.harvest-amber}"
-    rounded: "11px"
-    size: "42px"
-  week-day:
-    backgroundColor: "{colors.surface-white}"
-    textColor: "{colors.pine-ink}"
-    rounded: "{rounded.card}"
-    padding: "15px 4px"
-  week-day-today:
-    backgroundColor: "{colors.ledger-green}"
-    textColor: "{colors.surface-white}"
-    rounded: "{rounded.card}"
-    padding: "15px 4px"
-  dialog:
-    backgroundColor: "{colors.surface-white}"
-    rounded: "{rounded.dialog}"
-    width: "600px"
+    padding: "3px 10px 3px 8px"
+  status-badge-set:
+    backgroundColor: "{colors.sky-wash}"
+    textColor: "{colors.blue}"
+    typography: "{typography.badge}"
+    rounded: "{rounded.full}"
+  status-badge-act:
+    backgroundColor: "{colors.sun}"
+    textColor: "{colors.ink}"
+    typography: "{typography.badge}"
+    rounded: "{rounded.full}"
+  status-badge-open:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.sun-ink}"
+    typography: "{typography.badge}"
+    rounded: "{rounded.full}"
+  status-badge-waiting:
+    backgroundColor: "{colors.tint}"
+    textColor: "{colors.muted}"
+    typography: "{typography.badge}"
+    rounded: "{rounded.full}"
+  tab-bar:
+    backgroundColor: "{colors.glass}"
+    rounded: "{rounded.full}"
+    height: "64px"
 ---
 
-# Design System: Pool
+# Design system: Pool
 
-## Overview
+Read this before changing any screen. It is the contract for every person and agent who touches Pool's interface. Tokens live in `src/ui/styles.ts`; shared components live in `src/ui/` and `src/features/app/presentation.tsx`. If a screen needs something this document does not cover, add it here and to the shared layer first, then use it.
 
-**Creative North Star: "The Carpool Ledger"**
+## The idea: the logo is the system
 
-Pool should read like a well-kept family ledger: every ride, driver, consent and handoff is written down plainly, and you can tell at a glance what's settled and what isn't. The palette is a soft sage paper world (Morning Paper canvas, Sage Mist sidebar, white panels on hairline borders) with one deep, trustworthy Ledger Green for primary actions and "covered" states. Harvest Amber is the only color that asks for attention, so an uncovered ride or a pending task stands out without raising alarm.
+The Pool logo is a soft sky-blue car carrying three passengers (two coral, one yellow) behind a cream window, on navy wheels. Every visual decision comes from it.
 
-Components are friendly and tactile. Panels are generously rounded and padded, controls have a full 44px touch target, and lime icon discs and colored avatar initials add warmth without decoration. Density is moderate. It's an operational app read on a phone between errands, so each card carries one fact cluster, and the multi-column grid only appears once there's room for it.
+| Logo part | Token | Job in the interface |
+|---|---|---|
+| Car body | `sky`, `blue`, `skyWash` | The main action, links, selection, and "settled" |
+| Yellow passenger and spark lines | `sun`, `sunInk`, `sunWash` | Someone has to act |
+| Coral passengers | `coral`, `coralInk`, `coralWash` | Something failed, or a destructive action |
+| Wheels | `ink` | All text and icons |
+| Window | `cream` | Warm fill for icon discs and empty states |
+| Soft rounded clay shapes | `radius`, `shadow.card` | Large radii, soft lift, no hard edges |
 
-The system is flat. Depth comes from tonal layering (paper → mist → white) and 1px hairlines, never shadows. The UI is set in two typefaces: Manrope for tight, confident headings and DM Sans for calm, readable body text.
+The app should feel like the logo: friendly, rounded, calm, and quick to read on a phone between errands.
 
-**Key Characteristics:**
-- Sage-paper neutrals with a single deep green accent and a single amber attention color.
-- Flat surfaces separated by 1px Hairline Sage borders; no shadows anywhere.
-- Generously rounded containers (15px panels, 18px dialogs) and pill status badges.
-- Manrope headings with negative tracking; DM Sans body at 15/23.
-- 44px minimum controls, persistent phone tab bar, desktop sidebar.
+## Color
 
-## Colors
+All colors come from `colors` in `src/ui/styles.ts`. A feature file never contains a hex value.
 
-Low-chroma sage neutrals carry nearly every pixel. One green and one amber carry all of the meaning.
+**Surfaces**
+- `canvas` is the page behind everything.
+- `surface` (white) is every card, field, sheet and secondary button.
+- `tint` is quiet chrome: the desktop sidebar, neutral badges, date tiles, the close button, segmented-control tracks.
+- `cream` fills icon discs and empty-state symbols. It never carries text smaller than an icon.
 
-### Primary
-- **Ledger Green** (`ledger-green`): Primary buttons, current navigation item (icon + label), text links, "today" in the week strip, positive/covered notices and badges, focus-adjacent brand moments like the sidebar sign-off and skip link text. It means *settled* or *go*.
+**Text and lines**
+- `ink` for all primary text and icons. `muted` for secondary text, captions and inactive navigation.
+- `line` for 1px dividers and card borders. `outline` for field and checkbox borders, so inputs read as interactive.
 
-### Secondary
-- **Spring Lime** (`spring-lime`): Warm accent fill for 36px icon discs (circle shield, team icons), the 48px empty-state symbol, inline number chips, and the 2px rail on activity timelines. It is a background, never text.
+**The three signals**
+- **Sky means settled or go.** `sky` fills the primary button, the selected day, checked boxes and the plan button. `blue` is the text version: links, the current tab, settled badges. `skyWash` backs selected rows and settled notices.
+- **Sun means someone has to act.** Solid `sun` with `ink` text is reserved for "this is your move" badges. `sunWash` with `sunInk` text is for attention notices and task icons, and a `sun` outline marks an open slot (a ride with no driver).
+- **Coral means a failure or a destructive action.** `coralWash` with `coralInk` for error messages and danger buttons.
 
-### Tertiary
-- **Harvest Amber** (`harvest-amber`) on **Harvest Amber Wash** (`harvest-amber-wash`): Attention. Used for uncovered rides, pending tasks, task icons, attention badges, and the large status figure on ride overviews ("Needs a driver"). Amber marks a state that someone has to act on.
+No other hue may carry ride or task state. Avatars rotate through sky, sun and coral tints (the three passengers) for differentiation only; avatar color never means state.
 
-### Error
-- **Brick Error** (`brick-error`) on **Brick Error Wash** (`brick-error-wash`) with a 3px **Brick Error Rule** (`brick-error-rule`) left border: Form and command failures only.
-
-### Neutral
-- **Pine Ink** (`pine-ink`): All primary text and default icon color.
-- **Lichen Muted** (`lichen-muted`): Secondary text, paragraphs, eyebrows, inactive nav, ride times, captions.
-- **Field Outline** (`field-outline`): Input borders and candidate-driver cards, darker than hairlines so fields read as interactive.
-- **Hairline Sage** (`hairline-sage`): Every 1px divider and container border: panels, buttons, list rows, top bar, sidebar edge, card footers.
-- **Meadow Wash** (`meadow-wash`): Soft green tint for notices, status messages, checkbox rows, driver summaries, feature-detail columns.
-- **Sage Mist** (`sage-mist`): Desktop sidebar background and neutral badges.
-- **Morning Paper** (`morning-paper`): App and auth canvas behind everything.
-- **Surface White** (`surface-white`): Panels, cards, buttons, fields, dialogs, phone tab bar.
-- **Avatar tints** (`avatar-sage`, `avatar-rose`, `avatar-blue` with matching inks): Initial avatars for people and families, rotated for differentiation only.
-- **Focus Blue** (`focus-blue`): The 3px focus-visible outline. It's deliberately outside the palette so it can never be confused with state.
-- **Scrim Pine** (`scrim-pine`): The 40%-alpha pine overlay behind dialogs.
-
-### Named Rules
-**The Two Signals Rule.** Green means settled, amber means someone must act. No other hue may carry ride or task state.
-
-**The Paper Stack Rule.** Surfaces layer as Morning Paper → Sage Mist → Surface White. A new surface uses one of these three, never a fourth tint.
+**Contrast.** Measured pairs: `ink` on `sky` 6.7:1, `blue` on `surface` 5.6:1, `blue` on `skyWash` 5.0:1, `sunInk` on `sunWash` 6.7:1, `coralInk` on `coralWash` 6.2:1, `muted` on `surface` 5.9:1. Primary buttons use `ink` text on `sky`; white text on `sky` fails (2.2:1) and is not allowed. State is never shown by color alone: every badge has a text label.
 
 ## Typography
 
-**Display Font:** Manrope (with sans-serif)
-**Body Font:** DM Sans (with sans-serif)
+Two bundled variable fonts (`public/fonts/`): **Manrope** for headings and the wordmark, **DM Sans** for everything else.
 
-**Character:** Manrope's tight, slightly geometric headings give the ledger its confident page titles. DM Sans keeps long lists of names, times and states easy to scan. Both are bundled locally as variable fonts (`public/fonts/`).
+| Style | Font | Size / line | Weight | Use |
+|---|---|---|---|---|
+| Headline | Manrope | 32/38 (28/34 on phone) | 800 | One per screen: the page title |
+| Title | Manrope | 20/26 | 700 | Card and sheet titles |
+| Title small | Manrope | 17/24 | 700 | Sections inside a card, form groups |
+| Body | DM Sans | 16/24 | 400 | Default text, field text |
+| Body small | DM Sans | 14/20 | 400 | Supporting lines, hints |
+| Button | DM Sans | 16/22 | 600 | Buttons and links |
+| Field label | DM Sans | 14/20 | 600 | Labels above fields |
+| Badge | DM Sans | 13/18 | 700 | Status badges |
+| Caption | DM Sans | 12/16 | 400 | The smallest text allowed |
 
-### Hierarchy
-- **Brand** (800, 37px/42px, -2px): The "Pool" wordmark beside the car logo in the sidebar and auth card. The footer uses a 24px/800 lowercase "pool." variant.
-- **Headline** (700, 36px/45px, -1.3px): One page title per screen. It drops to **Headline Compact** (28px/36px phone, 30px/39px tablet, -0.9px) at ≤1200px, and to 27–29px/37px inside the auth card.
-- **Status Figure** (Manrope 700, 36px/44px, -1px, Harvest Amber): The single big state word on a ride overview.
-- **Title** (700, 22px/30px, -0.55px): Panel and dialog headings.
-- **Title Small** (700, 17px/24px): Subsections within a panel.
-- **Body** (400, 15px/23px): Default text. Paragraphs use Lichen Muted.
-- **Body Small** (400, 13px/20px): Captions, meta facts, section captions.
-- **Field** (400, 16px/23px): Input text. Kept at 16px so iOS doesn't zoom on focus.
-- **Label** (600, 14px/21px): Button text and text links.
-- **Field Label** (600, 13px/20px): Form labels above fields.
-- **Eyebrow** (700, 12px/18px, 1.1px tracking, UPPERCASE, Lichen Muted): The kicker above a page title ("SHARE THE DRIVING").
-- **Badge** (700, 12px/19px): Status pills.
+Each screen has exactly one Headline. Nothing is set below 12px. Field text stays at 16px so iOS does not zoom on focus. Uppercase eyebrows are not used.
 
-### Named Rules
-**The One Headline Rule.** Each screen gets exactly one Headline, with an optional Eyebrow above it. Everything below it is Title or smaller.
+## Spacing, shape and depth
+
+- **Spacing** runs on a 4px base: 4, 8, 12, 16, 20, 24, 32 (`spacing.xs` to `spacing.xxxl`). Cards sit 12px apart. Form fields sit 16px apart. Page content is inset 16px on a phone, 24px to 1200px, 40px beyond.
+- **Radius** has four steps and a pill: `sm` 8 (checkboxes, number chips), `md` 14 (buttons, fields, tiles, notices), `lg` 20 (cards), `xl` 28 (sheets and dialogs), `full` (badges, avatars, the tab bar). Pick the step by the size of the thing.
+- **Depth** has two levels. Cards have a 1px `line` border and `shadow.card`, a soft lift like the clay logo. Floating chrome uses `shadow.float`. Nothing else has a shadow.
+- **Touch targets** are 48px tall for buttons and fields, and never under 44px for anything tappable.
+
+## Liquid Glass
+
+Glass is for the navigation layer that floats over content. It is the `Glass` component in `src/ui/glass.tsx`: real Liquid Glass (`expo-glass-effect`) on iOS 26 and later, a backdrop blur on web, and a near-opaque white surface elsewhere.
+
+Glass is used in four places only:
+1. The phone tab bar (a floating capsule).
+2. The round "Plan a ride" button beside it, tinted `sky`.
+3. The phone top bar.
+4. Toasts.
+
+Content never sits on glass: cards, forms, sheets and lists stay opaque so text keeps its contrast. Glass is never stacked on glass.
 
 ## Layout
 
-- **Shell:** On desktop/tablet (>650px), a left sidebar in Sage Mist (190px up to 900px, 205px up to 1200px, 232px beyond) holds the brand, the current circle card, primary destinations, setup destinations, a sign-off line and "Plan a ride". A top bar (76px desktop, 64px phone) sits over the content with a hairline bottom border. On phones (≤650px) the sidebar is replaced by a persistent bottom tab bar (52px tabs, icon over a 12px label) on Surface White, inside safe areas.
-- **Content column:** Max width 1352px, centered. Horizontal inset is 16px on phone, 24px up to 1200px, and 40px beyond. Top padding is 24px on phone and 36px on desktop. Forms cap at 760px and the ride planner at 900px.
-- **Grids:** Dashboard, people, setup and ride lists turn into a two-up wrapping grid (≈47% basis, 20px gap) only above 900px. Below that everything stacks to full width. Paired form fields go side by side above 650px.
-- **Rhythm:** A 4px base with steps at 4, 8, 12, 16, 20 and 24px. Panels sit 16px apart vertically. List rows use 17px vertical padding with hairline separators. Page headings get 24px below them, collapsing to a stacked layout on phone.
-- **Breakpoints:** 650px (phone/tablet), 900px (multi-column), 1200px (wide). Layout must still reflow at 320px.
-
-## Elevation & Depth
-
-Pool is entirely flat. There are no box-shadows or blur. Depth comes from the Paper Stack (Morning Paper canvas, Sage Mist chrome, white content surfaces) and 1px Hairline Sage borders. Dialogs separate from the page with the Scrim Pine overlay rather than a lifted shadow.
-
-### Named Rules
-**The Ledger Is Flat Rule.** If a surface needs to stand apart, give it a hairline border or step it up the Paper Stack. Never add a shadow.
-
-## Shapes
-
-Shapes are soft and friendly, and the radius grows with the size of the container: checkboxes 4px, alerts 6px, fields 8px, buttons 9px, checkbox rows 10px, cards/notices/week days 12px, panels 15px, dialogs and the auth card 18px. Status badges are 20px pills, the account trigger is a 24px pill, and avatars, icon discs and the empty symbol are full circles. Borders are always 1px, except the 2px white avatar ring, the 2px lime activity rail and the 3px error rule. Icons are a small custom line set (24px grid, 1.7 stroke, default 20px).
+- **Phone (650px and under).** A glass top bar holds the wordmark (or a back button on detail screens) and the account avatar. Content scrolls underneath. A floating glass tab bar holds Home, Today, Schedule and Driving; the round plan button sits beside it. Setup destinations (My family, Vehicles, Invitations, Profile) and Sign out live in the Account sheet behind the avatar.
+- **Wider screens.** A `tint` sidebar holds the wordmark, a primary "Plan a ride" button, the four destinations, the setup destinations and the account row. There is no top bar.
+- Content is capped at 1120px. Forms are capped at 640px. Lists become two columns above 900px.
+- Breakpoints: 650, 900, 1200. Layout must reflow at 320px without horizontal scroll.
 
 ## Components
 
-### Buttons
-Friendly and tactile: a full 44px target, a hairline border, gently rounded corners.
-- **Shape:** Gently rounded (9px). Content-width by default (`alignSelf: flex-start`), with an icon gap of 8px.
-- **Primary:** Ledger Green fill and border, white Label text, 10px × 16px padding. Use one per view for the main commitment (plan, accept, confirm).
-- **Secondary:** White fill, Hairline Sage border, Pine Ink Label. This is the default for everything else, including "Today's rides" and "Done".
-- **Icon / Plain:** A 44×44 square with the same border. The plain variant drops the border and fill (menu, back, close in headers).
-- **States:** Disabled is 60% opacity. Focus is the global 3px Focus Blue outline with 3px offset. No hover or press transforms are defined.
+Use these. Do not build a second version of any of them.
 
-### Text Links
-Ledger Green Label text, 44px tall, often with a 16px leading icon ("+ Plan a ride") or a trailing chevron/arrow.
+### Buttons (`UI.Button`, `Link className="button …"`)
+One shape, four emphases:
+- **Primary** (`sky` fill, `ink` text): the single main commitment on a view. A view has at most one. `type="submit"` is primary by default.
+- **Secondary** (white, `line` border): every other action.
+- **Danger** (`coralWash`, `coralInk`): cancel a ride, remove a person, withdraw.
+- **Quiet** (text only, `blue`): low-emphasis actions next to a primary.
 
-### Status Badges
-- **Style:** 20px pill, 4px × 9px padding, Badge type.
-- **Variants:** Neutral (Sage Mist / Lichen), Positive (Meadow Wash / Ledger Green), Attention (Harvest Amber Wash / Harvest Amber).
+A form's submit button spans the column on a phone. Buttons show a spinner and "Saving…" while busy, dim to 72% while pressed, and to 50% when disabled. Labels are a verb and an object in two or three words ("Create ride", "Add child", "Change riders"). Never "Submit", "OK" or "Open saved result".
 
-### Cards / Containers
-- **Panel:** White, 1px Hairline Sage border, 15px radius, 24px padding (16px on phone), 16px vertical margin.
-- **Ride card:** A panel in a list grid (20px padding, 16px on phone). It has a 43px bordered date block, a heading with times in Lichen Muted, and a hairline-topped footer row for driver and actions pinned to the bottom.
-- **Ride overview:** A split panel. The main facts are on the left and a Meadow Wash feature column on the right (hairline-divided) shows the amber Status Figure. It stacks below 900px.
-- **Notice:** Meadow Wash, hairline border, 12px radius, 16px padding, Ledger Green 14px text. An attention variant swaps in the amber pair.
-- **Driver summary:** Meadow Wash row, 12px radius, 16px padding.
-- **Candidate:** 12px radius with a Field Outline border, for proposed drivers.
+### Links (`Link`)
+`blue`, weight 600, 44px tall. `className="text-link"` adds a trailing icon. Use a link to go somewhere and a button to do something.
 
-### Inputs / Fields
-- **Style:** White, 1px Field Outline border, 8px radius, 10px × 12px padding, 46px min height, 16px Field type. Labels sit 8px above in Field Label type.
-- **Checkbox row:** Meadow Wash tile (10px radius, 12px padding) with a 22px white checkbox (4px radius, hairline border), used for explicit consents and confirmations.
-- **Native controls:** Date and select use the platform's native pickers on iOS and browser controls on web.
-- **Error:** Brick Error alert block (Brick Error Wash, 3px left rule, 6px radius) above or near the form.
+### Status badges (`StatusBadge`)
+A pill with an icon and **one to three short words**. A badge is never a sentence and never wraps. If the state needs explaining, the explanation goes in a line of body text under the title, in plain words that say who has to do what ("Waiting for Cam to say yes").
 
-### Navigation
-- **Sidebar items:** Plain buttons with a 20px icon and 14px label. The current item is Ledger Green with weight 700, others Lichen Muted at 400. Setup destinations sit below a hairline.
-- **Phone tabs:** Equal-width, 52px tall, icon above a 12px centered label, same current-item coloring.
-- **Circle card:** A hairline-bordered 12px box at the top of the sidebar with a lime shield disc, circle name and "Share the driving".
+A ride badge answers one question: **whose move is it?** Each answer has its own fill, outline and icon, so two different states never look alike and colour is never the only cue.
 
-### Dialogs
-A white sheet with an 18px radius and hairline border, max 600px wide and 95% tall, on the Scrim Pine overlay. The header row has a Title and a 44px close button, the body scrolls, and the footer has a right-aligned secondary "Done", with sections divided by hairlines. Focus is trapped, Escape closes it, and focus is restored on close. It fades in on native and appears instantly on web.
+| Tone | Means | Look | Labels |
+|---|---|---|---|
+| `act` | You have to do something | Solid `sun`, `ink` text, arrow | "Invited", "Your reply", "Confirm handoff", "Pick up", "Drop off", "Who meets" |
+| `open` | The ride has no driver; anyone can take it | `surface` with a `sun` outline, `sunInk` text, car | "Needs driver" |
+| `waiting` | Someone else has to answer | `tint`, `muted` text, clock | "Asked Cam", "Dropping off" |
+| `set` | Settled | `skyWash`, `blue` text, check | "Covered", "You’re driving", "On the way" |
+| `neutral` | Over or off | `tint`, `muted` text, grey dot | "Completed", "Cancelled", "Not riding" |
 
-### Week Strip
-Seven equal day tiles (white, hairline, 12px radius, 15px × 4px padding). Today is filled Ledger Green with white text. On phone the tiles tighten to 8px radius and a 4px gap.
+Rules:
+- Never use a bare "Pending". A waiting badge names who is being waited for ("Asked Cam"), and the line under the title says what for.
+- Solid sun is only for the viewer's own move. If the viewer can do nothing, the badge is `open`, `waiting` or `set`.
+- Outside rides (invitation lists, handoff rows) the older `attention`, `positive` and `neutral` tones remain.
 
-### Avatars & Icon Discs
-40px initials avatars with a 2px white ring in rotating sage/rose/blue tints. 36px Spring Lime discs hold circle and team icons. 42px amber rounded squares (11px) hold task icons.
+A ride's badge and its one-line explanation always come from `rideSummary()` in `src/lib/ride-state.ts`. Never write a second label map: the same ride must read the same on Home, Today, the Schedule and its own page.
 
-### Empty State
-Centered: a 48px Spring Lime circle symbol, a short title, then one plain sentence telling the user what to do next.
+### Ride cards (`RideCard`, `RideList`)
+The one ride card: when, where, a badge, and a line saying who has to do what. The whole card opens the ride. If this person can act on it in one tap, that action sits in a row under the card.
 
-## Do's and Don'ts
+### Cards (`UI.Section`, class `panel`)
+White, `radius.lg`, 20px padding (16px on phone), hairline plus `shadow.card`. One fact cluster per card. A card that is a link to a detail screen is tappable as a whole.
 
-### Do:
-- **Do** build every new surface from the Paper Stack: Morning Paper canvas, Sage Mist chrome, white panels with 1px Hairline Sage borders.
-- **Do** keep Ledger Green for primary actions, current navigation and covered/settled states, with one primary button per view.
-- **Do** mark anything that needs a person's action with the Harvest Amber pair, and only that.
-- **Do** use Manrope for headings (one Headline per screen) and DM Sans for everything else, with fields at 16px.
-- **Do** keep every interactive element at least 44px tall and keep the 3px Focus Blue outline visible.
-- **Do** stack to a single column at ≤900px and switch to the phone tab bar at ≤650px.
+### Notices (class `notice`, `role="status"`, `role="alert"`)
+`radius.md`, no border. Sky wash for information, sun wash for attention, coral wash for errors. One or two sentences.
 
-### Don't:
-- **Don't** add box-shadows, glows or blur. Separation comes from hairlines and tonal steps (The Ledger Is Flat Rule).
-- **Don't** introduce a new hue to signal ride or task state. Green and amber are the only signals, and Brick Error is only for failures.
-- **Don't** use Spring Lime as text or as a button fill. It's a warm background accent only.
-- **Don't** put more than one Headline on a screen or use Manrope for body copy.
+### Fields (`UI.Label` with `UI.Field`, `UI.Select`, `UI.Choice`)
+- Every field has a visible label above it. Placeholders are examples, never labels.
+- **Text**: only when the answer is free text (a name, a place).
+- **Choice** (`UI.Choice`, the segmented control): two to four short, exclusive options ("Outbound / Return", seat types).
+- **Select**: five or more options, or long option labels. Native sheet on iOS, system select on web.
+- **Date and time** (`UI.Field type="date" | "time"`): nobody types a date. A field-shaped button opens the system picker.
+- **Checkbox rows** (`UI.Label className="checkbox-label"`): multi-select lists (riders, families). The whole row is the target; a selected row turns `skyWash` with a `sky` border.
+- A number that is small and bounded (seats) uses a stepper or a segmented control, not a keyboard.
+
+### Sheets (`ActionDialog`)
+The only overlay. A bottom sheet on a phone, a centered dialog from 651px. It has a title, a round close button, and a scrim that closes it when tapped. There is no "Done" footer. A sheet closes itself when the task inside it succeeds.
+
+### Toasts (`useToast`)
+A glass pill near the bottom of the screen (above the phone tab bar) with a sky check and a few words ("Ride created", "Child added"). It appears when an action succeeded **and** the surface that held the form has gone (a sheet closed, or the app navigated). It lasts four seconds and can be dismissed by tapping. One at a time.
+
+### Empty states (`EmptyState`)
+A 56px cream disc with an icon, a short title, one sentence, and a primary button for the obvious next step.
+
+### Avatars and icon discs
+40px circles. Avatars show initials on a passenger tint. Icon discs are `cream` with an `ink` icon. Icons are the line set in `src/ui/icon.tsx` (24px grid, 1.7 stroke). No emoji as icons.
+
+## Interaction patterns
+
+These rules matter more than any color.
+
+### Forms
+1. **Ask only what Pool cannot work out.** Timezone comes from the device. Drop-off is on the pickup date. Direction defaults to outbound. A family with one child has that child preselected. Technical values (revisions, versions, ids, UTC, IANA names) never appear in the interface.
+2. **Sensible defaults, easy controls.** Prefer a tap to typing. Preselect the common answer.
+3. **Short forms.** A simple task is one group of fields and one button. Optional detail hides behind a `Disclosure`.
+4. **A date chosen earlier is never asked again.** Planning from a day in the Schedule carries that date into the form.
+
+### Completing an action
+1. The button shows it is working ("Saving…" and a spinner). The form is disabled until the answer arrives.
+2. **On success the person goes back to their task without another tap.** A created thing opens (creating a ride lands on that ride). A sheet closes. The list behind it already shows the change. A toast confirms.
+3. If the form stays on screen after success, the confirmation is shown inline next to the button, and no toast is shown. One confirmation per action.
+4. **On failure the input stays.** The error appears next to the button in a coral notice, says what happened in plain words and what to do next. Never clear a form because a save failed.
+
+### The next action
+- Each screen and each ride card leads with what **this person** has to do, as a primary button with a verb ("I’ll drive", "Join ride", "Picked up everyone").
+- What other people still have to do is a muted line of text that names them ("Waiting for Cam to say yes"), never a button.
+- One primary button per view. Rare and destructive actions sit behind a `Disclosure` or a danger button at the bottom.
+
+### Ask for a yes only where it is someone's own decision
+Three things need a yes, each from the one person it belongs to, each in one tap:
+- a family putting its own children on a ride ("Join ride"),
+- an adult agreeing to drive ("I’ll drive", "Yes, I’ll drive"),
+- a guardian confirming they have their child at drop-off ("I have Leo").
+
+Everything else is **announced, not approved**: who is driving and in which car, a change of driver or car, a family joining or leaving after a driver is set. The ride changes at once, and the families on it are told in "What changed" on Home (`RideUpdates`) and on the ride itself.
+
+- Never add a step where one family approves another family's decision, and never make a ride wait for a family that has not answered. An unanswered invitation supplies no riders and blocks nothing.
+- A change someone might not want has an exit instead of a gate: a family can take its own children off a ride ("Change riders") any time before the first pickup; a driver can stop driving; a pending request can be cancelled.
+- The sheet that makes a change says in one sentence what happens next and who is told ("You’re the driver as soon as you tap. The families on this ride are told.").
+- The only automatic refusal is physical: a late join that the driver's car has no seat for is declined with what to do about it.
+
+### Calendar
+- The Schedule opens on the seven days starting today, as a strip. A day is a button: tapping it selects it and shows that day's rides underneath. The selected day is filled `sky`; today is outlined in `blue`.
+- Each day carries one dot (sun when a ride that day still needs someone, sky when every ride is settled), so the week reads without opening a ride.
+- Arrows move seven days at a time; "Today" returns. "Plan a ride" on a selected day carries the date into the form.
+- Anything that looks like a day you can tap must do something when tapped.
+
+### Staying current
+- Shared data refreshes by itself: when the app returns to the foreground and every 20 seconds while visible (`src/services/live.ts`). Pull-to-refresh exists on iOS as a habit, not a need. There is no "Refresh" button.
+- A refresh never clears what is on screen or a draft in a form.
+- A notice about someone else's change says what changed and whether this person must act.
+- Changes other people made to a ride you are on appear under "What changed" on Home for three days: one line each, naming the person or family, linking to the ride. Pool sends no push notifications or email about rides yet; this list is the announcement.
+
+### Setup without dead ends
+- If a task needs something that does not exist yet (a child, a vehicle), offer to add it right there in a sheet and return to the task with it selected. Do not send the person to another screen.
+- Explain "family" and "circle" the first time they appear, in one line each: a **family** is the adults and children in your household; a **circle** is the group of families you share rides with.
+
+### Motion
+- Sheets slide up (phone) or fade (wider). Toasts appear without travel. Press feedback is a 120ms opacity change.
+- Motion explains where something came from; it is never decoration. Reduced-motion settings turn it off.
+
+## Language
+
+Voice: a calm, capable friend. Plain, direct, short.
+
+- **Say who and what.** "Alex is driving" beats "Driver confirmed". "Tuesday's outbound ride needs a driver" beats "Coverage incomplete".
+- **Lead with the person's action.** "Add a child to plan a ride", not "Children must be registered before planning".
+- **Sentence case** everywhere, including buttons and titles. No exclamation marks.
+- **No system words**: revision, version, proposal, nomination, snapshot, command, IANA, UTC, id. Say "driver request", "plan", "time".
+- **One name per thing**: ride, rider, driver, family, circle, guardian, pickup, drop-off. Use "drop-off", never "destination", in the interface. The Today tab is "Today".
+- **Errors** say what happened and the next step: "That didn't go through. Your entries are still here, so check your connection and try again."
+- **Times** are written the way people say them ("Tue, Nov 24 · 7:40 – 8:10 AM", from `rideWhen()` in `src/lib/rides.ts`). The UTC offset appears only when a ride's timezone differs from the device's.
+- **Numbers agree**: "1 ride needs a driver", "3 rides need a driver".
+- Buttons: verb plus object. Badges: one to three short words. Helper text: one sentence.
+
+## Accessibility
+
+- WCAG 2.1 AA. Text contrast at least 4.5:1; field borders at least 3:1.
+- Every tappable thing is at least 44px and has a role and an accessible name. Icon-only buttons have a label.
+- Focus is a 3px `ink` outline with 3px offset on web. Sheets trap focus, close on Escape and return focus to the trigger.
+- Success and error messages are announced (`role="status"`, `role="alert"`).
+- Layout reflows at 320px. Dynamic type must not clip text: avoid fixed heights on text containers.
+
+## Where things live
+
+| Need | Use | File |
+|---|---|---|
+| Colors, spacing, radius, shadows, text styles, layout classes | `colors`, `spacing`, `radius`, `shadow`, `styles`, class names | `src/ui/styles.ts` |
+| Text, cards, fields, buttons, segmented choice, loading | `UI.*` (`Heading1`, `Section`, `Label`, `Field`, `Select`, `Choice`, `Button`, `Loading`) | `src/ui/elements.tsx` |
+| A form that runs an action | `CommandForm`. `after` decides what success does: `"open"` (go to the created thing), `"close"` (close the sheet), `"toast"`, `"inline"`. `tone="danger"` for destructive submits. `compact` for a lone one-tap button | `src/ui/command-form.tsx` |
+| An overlay | `ActionDialog`. `tone` styles the trigger; `compact` makes it a text action for list rows; `trigger` takes custom content | `src/features/app/action-dialog.tsx` |
+| A confirmation after the surface closed | `useToast()` | `src/ui/toast.tsx` |
+| Floating navigation surfaces | `Glass` | `src/ui/glass.tsx` |
+| Page title, badge, avatar, empty state, optional detail | `PageHeading`, `StatusBadge`, `Avatar`, `EmptyState`, `Disclosure` | `src/features/app/presentation.tsx` |
+| A ride in a list | `RideCard`, `RideList` | `src/features/app/ride-list.tsx` |
+| A ride's badge and "who does what" line | `rideSummary()` | `src/lib/ride-state.ts` |
+| Ride times | `rideWhen()`, `rideClockRange()`, `rideTime()` | `src/lib/rides.ts` |
+| Offering to drive | `HomeDriverOffer` | `src/features/app/home-driver-offer.tsx` |
+| Telling families what changed on their rides | `RideUpdates` (RPC `ride_updates`) | `src/features/app/ride-updates.tsx` |
+| Who meets a child by default | `meetOwnRiders()` | `src/services/meet-riders.ts` |
+| Adding a child or car without leaving the task | `AddChildSheet`, `AddVehicleForm` | `src/features/app/ride-form.tsx`, `driver-form.tsx` |
+| Keeping data current | `useLiveData()` (mounted once in the shell) | `src/services/live.ts` |
+
+## Checklist before shipping a screen
+
+- [ ] Only tokens from `src/ui/styles.ts`; no hex, radius or font size written in the feature file.
+- [ ] One Headline, at most one primary button.
+- [ ] Every badge is one to three short words, and its tone matches whose move it is.
+- [ ] No step asks one family to approve another's decision; changes are announced.
+- [ ] Each field passes "could Pool have known this?" and uses the lightest control that fits.
+- [ ] Success returns the person to their task; failure keeps their input.
+- [ ] The person's own next action is first and is a button; other people's actions are text.
+- [ ] No system words in any string.
+- [ ] Works at 390px and 1280px; nothing hides behind the tab bar.

@@ -1,23 +1,29 @@
-import { newRequestId } from "@/lib/request-id";
+import { View } from "react-native";
 import * as UI from "@/ui/elements";
 import { createPanel } from "@/ui/remote";
+import { colors, spacing, styles } from "@/ui/styles";
 import { createClient } from "@/lib/supabase/client";
 import { progressLabel } from "@/lib/handoffs";
-import { rideTime } from "@/lib/rides";
-import { HandoffForm } from "./handoff-form";
-import { Disclosure, StatusBadge } from "./presentation";
-import { Confirmation } from "./driver-form";
+import { dateInZone, rideClock } from "@/lib/rides";
+import { HandoffAllForm, HandoffForm, childRowId } from "./handoff-form";
+import { Avatar, Disclosure, StatusBadge } from "./presentation";
 
-function handoffActivityText(kind: string, actorName: string) {
+const avatarTones = ["sky", "sun", "coral"];
+const firstName = (name: string) => name.trim().split(/\s+/)[0] || name;
+// The driver's pickup buttons appear this long before the pickup time. The
+// first pickup locks the ride, so it must not be possible days early.
+const pickupWindow = 60 * 60_000;
+
+function historyText(kind: string, actor: string, child: string) {
   switch (kind) {
     case "picked_up":
-      return `${actorName} (driver) confirmed pickup`;
+      return `${actor} picked up ${child}`;
     case "awaiting_handoff":
-      return `${actorName} (driver) reported arrival`;
+      return `${actor} arrived with ${child}`;
     case "completed":
-      return `${actorName} (receiving guardian) confirmed handoff`;
+      return `${actor} met ${child}`;
     default:
-      return `${actorName} reported a trip update`;
+      return `${actor} updated ${child}’s trip`;
   }
 }
 
@@ -35,7 +41,7 @@ async function loadHandoffPanel({
   cancelled: boolean;
 }) {
   const client = await createClient();
-  const [user, riders, handoffs, trip, events] = await Promise.all([
+  const [user, riders, handoffs, trip, events, driving] = await Promise.all([
     client.auth.getUser(),
     client
       .from("ride_riders")
@@ -50,37 +56,63 @@ async function loadHandoffPanel({
       .eq("ride_id", rideId)
       .order("occurred_at")
       .order("child_id"),
+    client.rpc("driver_status", { p_ride_id: rideId }),
   ]);
   if (
     riders.error ||
     handoffs.error ||
     trip.error ||
     events.error ||
-    user.error
+    user.error ||
+    driving.error
   )
-    throw new Error("Trip progress could not be loaded");
-  if (!riders.data.length) return { early: null };
+    throw new Error("Pool couldn’t load this trip. Try again.");
+  // Nothing to follow: no riders, or the ride was cancelled before it began.
+  if (!riders.data.length || (cancelled && !trip.data)) return { early: null };
   const guardians = await client
     .from("family_members")
     .select("family_id,user_id")
     .in("family_id", [...new Set(riders.data.map((r) => r.family_id))])
     .is("removed_at", null);
-  if (guardians.error) throw new Error("Guardians could not be loaded");
+  if (guardians.error)
+    throw new Error("Pool couldn’t load this trip. Try again.");
   const profiles = await client
     .from("profiles")
     .select("id,display_name")
     .in("id", [...new Set(guardians.data.map((g) => g.user_id))]);
-  if (profiles.error) throw new Error("Guardian names could not be loaded");
+  if (profiles.error)
+    throw new Error("Pool couldn’t load this trip. Try again.");
   const actor = user.data.user?.id;
-  const started = Boolean(trip.data);
-  const awaiting = handoffs.data.filter(
-    (h) => h.status === "awaiting_handoff",
-  ).length;
+  const status = driving.data[0];
+  const covered = status?.coverage === "confirmed";
   const ownFamilies = new Set(
     guardians.data.filter((g) => g.user_id === actor).map((g) => g.family_id),
   );
-  // Keep each child's position stable while reports are saved, with the adult's
-  // own family first. Moving a focused child after a report can lose focus.
+  // Another family still has to say who meets their child: name that family.
+  // The names are a courtesy, so the card still loads without them.
+  const familyNames: Record<string, string> = {};
+  if (
+    riders.data.some(
+      (r) =>
+        !ownFamilies.has(r.family_id) &&
+        !handoffs.data.some((h) => h.child_id === r.child_id),
+    )
+  ) {
+    const ride = await client
+      .from("rides")
+      .select("circle_id")
+      .eq("id", rideId)
+      .maybeSingle();
+    const roster = ride.data
+      ? await client.rpc("circle_roster", { p_circle_id: ride.data.circle_id })
+      : null;
+    for (const family of roster?.data ?? [])
+      familyNames[family.family_id] = family.family_name;
+  }
+  const now = Date.now();
+  const opens = status ? Date.parse(status.starts_at) - pickupWindow : 0;
+  // Keep each child's position stable while steps are saved, with the adult's
+  // own family first. Moving a focused child after a step can lose focus.
   const orderedRiders = [...riders.data].sort(
     (a, b) =>
       Number(ownFamilies.has(b.family_id)) -
@@ -100,11 +132,81 @@ async function loadHandoffPanel({
       guardians,
       profiles,
       actor,
-      started,
-      awaiting,
+      covered,
+      driverName: covered
+        ? firstName(status.current_driver_name || status.driver_name)
+        : "",
+      familyNames,
+      // Pickup can be confirmed from an hour before the pickup time.
+      open: covered && now >= opens,
+      opensToday:
+        covered &&
+        dateInZone(new Date(now), timezone) ===
+          dateInZone(new Date(opens), timezone)
+          ? rideClock(new Date(opens).toISOString(), timezone)
+          : "",
       orderedRiders,
     },
   };
+}
+
+type Guardian = { id: string; name: string };
+
+// "the Brooks family", "the Chens": however the family named itself.
+function familyLabel(name: string | undefined, child: string) {
+  if (!name) return `${child}’s family`;
+  const plain = name.trim().replace(/^the\s+/i, "");
+  return /famil|s$/i.test(plain) ? `the ${plain}` : `the ${plain} family`;
+}
+
+// Someone other than the current choice meets the child. With one other
+// guardian that is one tap; with more it is a short select.
+function MeetChange({
+  child,
+  fields,
+  others,
+  actor,
+}: {
+  child: string;
+  fields: Record<string, string>;
+  others: Guardian[];
+  actor?: string;
+}) {
+  if (!others.length) return null;
+  if (others.length === 1)
+    return (
+      <HandoffForm
+        command="designateRecipient"
+        fields={{ ...fields, recipient_id: others[0].id }}
+        label={
+          others[0].id === actor
+            ? `I’ll meet ${child}`
+            : `${firstName(others[0].name)} will meet ${child}`
+        }
+        emphasis="quiet"
+      />
+    );
+  return (
+    <Disclosure title="Someone else">
+      <HandoffForm
+        command="designateRecipient"
+        fields={fields}
+        label="Save"
+        emphasis="secondary"
+      >
+        <UI.Label>
+          {`Who meets ${child}?`}
+          <UI.Select name="recipient_id" defaultValue={others[0].id} required>
+            {others.map((g) => (
+              <UI.Option key={g.id} value={g.id}>
+                {g.id === actor ? "Me" : g.name}
+              </UI.Option>
+            ))}
+          </UI.Select>
+        </UI.Label>
+      </HandoffForm>
+    </Disclosure>
+  );
 }
 
 export const HandoffPanel = createPanel(
@@ -123,237 +225,315 @@ export const HandoffPanel = createPanel(
     guardians,
     profiles,
     actor,
-    started,
-    awaiting,
+    covered,
+    driverName,
+    familyNames,
+    open,
+    opensToday,
     orderedRiders,
-  }) => (
-    <UI.Section aria-labelledby="trip-progress">
-      <UI.Heading2 id="trip-progress">Pickup and handoffs</UI.Heading2>
-      <UI.Paragraph className="section-caption">
-        Manually reported · Reload for updates
-      </UI.Paragraph>
-      <UI.Paragraph>
-        The driver confirms pickup for each child. The child’s designated
-        receiving guardian confirms the handoff after arrival.
-      </UI.Paragraph>
-      <UI.Paragraph
-        role="status"
-        className={`notice${awaiting ? " attention" : ""}`}
-      >
-        {trip.data?.completed_at
-          ? "Ride completed — every child’s handoff is confirmed."
-          : awaiting
-            ? `${awaiting} ${awaiting === 1 ? "child awaits" : "children await"} guardian receipt. The ride is not complete.`
-            : started
-              ? "Trip in progress — handoffs remain."
-              : "Before pickup · Designate a receiving guardian for each child."}
-      </UI.Paragraph>
-      <UI.List className="journey-list">
-        {orderedRiders.map((rider) => {
-          const h = handoffs.data.find(
-            (item) => item.child_id === rider.child_id,
-          );
-          const own = guardians.data.some(
-            (g) => g.family_id === rider.family_id && g.user_id === actor,
-          );
-          const fields = {
-            ride_id: rideId,
-            child_id: rider.child_id,
-            revision: String(revision),
-            version: String(h?.version ?? 0),
-          };
-          const recipient = h?.recipient_id === actor && own;
-          return (
-            <UI.ListItem key={rider.child_id}>
-              <UI.Article aria-label={`Journey for ${rider.display_name}`}>
-                <UI.Heading3
-                  id={`journey-${rideId}-${rider.child_id}`}
-                  tabIndex={-1}
-                >
-                  {rider.display_name}
-                </UI.Heading3>
-                <UI.Paragraph aria-live="polite" aria-atomic="true">
-                  <StatusBadge
-                    tone={
-                      h?.status === "awaiting_handoff"
-                        ? "attention"
-                        : h?.status === "completed"
-                          ? "positive"
-                          : "neutral"
-                    }
-                  >
-                    <UI.Strong>{progressLabel(h?.status)}</UI.Strong>
-                  </StatusBadge>
-                </UI.Paragraph>
-                <UI.Paragraph>
-                  Receiving guardian: {h?.recipient_name ?? "Not designated"}
-                </UI.Paragraph>
-                {!started &&
-                  own &&
-                  h &&
-                  !guardians.data.some(
-                    (g) =>
-                      g.family_id === rider.family_id &&
-                      g.user_id === h.recipient_id,
-                  ) && (
-                    <UI.Paragraph role="alert">
-                      The designated guardian is no longer active. Choose a
-                      current guardian before pickup.
-                    </UI.Paragraph>
-                  )}
-                {!started && !cancelled && own && (
-                  <Disclosure
-                    title={
-                      h?.recipient_id
-                        ? "Change receiving guardian"
-                        : "Choose receiving guardian"
-                    }
-                    open={!h?.recipient_id}
-                  >
-                    <HandoffForm
-                      key={`recipient-${rider.child_id}`}
-                      command="designateRecipient"
-                      fields={fields}
-                      label="Save designated guardian"
-                      secondary
-                    >
-                      <UI.Label>
-                        Designated guardian for {rider.display_name}
-                        <UI.Select
-                          key={h?.recipient_id ?? "none"}
-                          name="recipient_id"
-                          defaultValue={h?.recipient_id ?? ""}
-                          required
-                        >
-                          <UI.Option value="" disabled>
-                            Choose an active guardian
-                          </UI.Option>
-                          {guardians.data
-                            .filter((g) => g.family_id === rider.family_id)
-                            .map((g) => (
-                              <UI.Option key={g.user_id} value={g.user_id}>
-                                {profiles.data.find((p) => p.id === g.user_id)
-                                  ?.display_name ?? "Guardian"}
-                                {g.user_id === actor ? " (you)" : ""}
-                              </UI.Option>
-                            ))}
-                        </UI.Select>
-                      </UI.Label>
-                      <Confirmation>
-                        I designate this guardian to receive{" "}
-                        {rider.display_name}. A guardian who drives must still
-                        explicitly confirm receipt.
-                      </Confirmation>
-                    </HandoffForm>
-                  </Disclosure>
-                )}
-                {!cancelled && isDriver && h?.status === "scheduled" && (
-                  <HandoffForm
-                    key={`pickup-${rider.child_id}-${h.version}`}
-                    command="recordPickup"
-                    fields={{ ...fields, request_id: newRequestId() }}
-                    label="Confirm pickup as driver"
-                  >
-                    <Confirmation>
-                      As the driver, I confirm I picked up {rider.display_name}.
-                      First pickup freezes this ride’s plan and responsibilities.
-                    </Confirmation>
-                  </HandoffForm>
-                )}
-                {!cancelled && isDriver && h?.status === "picked_up" && (
-                  <HandoffForm
-                    key={`arrival-${rider.child_id}-${h.version}`}
-                    command="reportArrival"
-                    fields={{ ...fields, request_id: newRequestId() }}
-                    label="Report arrival"
-                  >
-                    <Confirmation>
-                      I report arrival for {rider.display_name}. Arrival does
-                      not confirm guardian receipt.
-                    </Confirmation>
-                  </HandoffForm>
-                )}
-                {!cancelled &&
-                  recipient &&
-                  h?.status === "awaiting_handoff" && (
-                    <HandoffForm
-                      key={`receipt-${rider.child_id}-${h.version}`}
-                      command="confirmHandoff"
-                      fields={{ ...fields, request_id: newRequestId() }}
-                      label="Confirm handoff as guardian"
-                    >
-                      <Confirmation>
-                        As the receiving guardian, I confirm I received{" "}
-                        {rider.display_name}.
-                      </Confirmation>
-                    </HandoffForm>
-                  )}
-                {h?.status === "awaiting_handoff" && !recipient && (
-                  <UI.Paragraph>
-                    Waiting for {h.recipient_name}, the receiving guardian, to
-                    confirm the handoff.
-                  </UI.Paragraph>
-                )}
-                {(h?.picked_up_at || h?.arrived_at || h?.completed_at) && (
-                  <Disclosure title="Report times">
-                    {h?.picked_up_at && (
-                      <UI.Paragraph>
-                        Pickup reported:{" "}
-                        <UI.Inline dateTime={h.picked_up_at}>
-                          {rideTime(h.picked_up_at, timezone)}
-                        </UI.Inline>
-                      </UI.Paragraph>
-                    )}
-                    {h?.arrived_at && (
-                      <UI.Paragraph>
-                        Arrival reported:{" "}
-                        <UI.Inline dateTime={h.arrived_at}>
-                          {rideTime(h.arrived_at, timezone)}
-                        </UI.Inline>
-                        .{" "}
-                        {h.status !== "completed" &&
-                          "Guardian receipt is still required."}
-                      </UI.Paragraph>
-                    )}
-                    {h?.completed_at && (
-                      <UI.Paragraph>
-                        Receipt confirmed:{" "}
-                        <UI.Inline dateTime={h.completed_at}>
-                          {rideTime(h.completed_at, timezone)}
-                        </UI.Inline>
-                      </UI.Paragraph>
-                    )}
-                  </Disclosure>
-                )}
-              </UI.Article>
-            </UI.ListItem>
-          );
-        })}
-      </UI.List>
-      <Disclosure title="Ride activity">
-        <UI.Heading3>Ride activity</UI.Heading3>
-        {events.data.length ? (
-          <UI.List className="activity-list">
-            {events.data.map((event) => (
-              <UI.ListItem key={event.request_id}>
-                {
-                  riders.data.find((r) => r.child_id === event.child_id)
-                    ?.display_name
-                }
-                : {handoffActivityText(event.kind, event.actor_name)} at{" "}
-                <UI.Inline dateTime={event.occurred_at}>
-                  {rideTime(event.occurred_at, timezone)}
-                </UI.Inline>
-                .
-              </UI.ListItem>
-            ))}
-          </UI.List>
-        ) : (
-          <UI.Paragraph>
-            No pickup, arrival or receipt reports yet.
+  }) => {
+    const started = Boolean(trip.data);
+    const completed = Boolean(trip.data?.completed_at);
+    const rows = orderedRiders.map((rider) => {
+      const h = handoffs.data.find((item) => item.child_id === rider.child_id);
+      const family = guardians.data
+        .filter((g) => g.family_id === rider.family_id)
+        .map((g) => ({
+          id: g.user_id,
+          name:
+            profiles.data.find((p) => p.id === g.user_id)?.display_name ??
+            "Guardian",
+        }));
+      const own = family.some((g) => g.id === actor);
+      return {
+        rider,
+        h,
+        family,
+        own,
+        status: h?.status ?? "scheduled",
+        // Someone is chosen to meet this child, and is still in the family.
+        settled:
+          Boolean(h) && (!own || family.some((g) => g.id === h?.recipient_id)),
+        receives: Boolean(h) && h?.recipient_id === actor && own,
+      };
+    });
+    // Pickup starts only when every child has someone to meet them.
+    const ready = rows.every((row) => row.settled);
+    const steps = rows.map((row) => {
+      if (cancelled || completed) return null;
+      if (row.receives && row.status === "awaiting_handoff") return "receive";
+      if (isDriver && row.status === "picked_up") return "arrive";
+      if (
+        isDriver &&
+        row.status === "scheduled" &&
+        (started || (open && ready))
+      )
+        return "pickup";
+      if (row.own && !started && !row.settled) return "choose";
+      return null;
+    });
+    // Two or more children at the same step get one button for all of them.
+    const together = (step: "pickup" | "arrive") =>
+      rows
+        .filter((_, index) => steps[index] === step)
+        .map(({ rider, h }) => ({
+          child_id: rider.child_id,
+          version: h?.version ?? 0,
+          name: rider.display_name,
+        }));
+    const pickups = together("pickup"),
+      arrivals = together("arrive");
+    const everyone =
+      pickups.length > 1
+        ? {
+            command: "recordPickup" as const,
+            label: "Picked up everyone",
+            items: pickups,
+          }
+        : arrivals.length > 1 && !pickups.length
+          ? {
+              command: "reportArrival" as const,
+              label: "Arrived with everyone",
+              items: arrivals,
+            }
+          : null;
+    // One primary button in the card: this person's first open step.
+    const lead = everyone
+      ? -1
+      : steps.findIndex((step) => step && (step !== "choose" || covered));
+    const note =
+      cancelled || started
+        ? null
+        : !covered
+          ? "The trip starts once a driver is confirmed."
+          : !open
+            ? isDriver && opensToday
+              ? `You can confirm pickups from ${opensToday}.`
+              : opensToday && driverName
+                ? `${driverName} can confirm pickups from ${opensToday}.`
+                : "Trip steps appear here on the day."
+            : !ready
+              ? isDriver
+                ? "You can start once every child has someone to meet them."
+                : null
+              : isDriver
+                ? "After the first pickup, the ride can’t be changed."
+                : `After ${driverName ? `${driverName}’s` : "the"} first pickup, the ride can’t be changed.`;
+    return (
+      <UI.Section role="region" aria-labelledby="trip-progress">
+        <UI.Heading2 id="trip-progress" style={{ marginBottom: spacing.xs }}>
+          Trip
+        </UI.Heading2>
+        {completed && (
+          <UI.Paragraph role="status" className="notice">
+            Every child was handed off.
           </UI.Paragraph>
         )}
-      </Disclosure>
-    </UI.Section>
-  ),
+        {note && <UI.Small style={{ color: colors.muted }}>{note}</UI.Small>}
+        {everyone && (
+          <View style={{ marginTop: spacing.md }}>
+            <HandoffAllForm
+              key={everyone.command}
+              command={everyone.command}
+              rideId={rideId}
+              revision={String(revision)}
+              items={everyone.items}
+              label={everyone.label}
+            />
+          </View>
+        )}
+        <UI.List style={{ marginBottom: 0 }}>
+          {rows.map(
+            ({ rider, h, family, own, status, settled, receives }, index) => {
+              const name = rider.display_name;
+              const step = steps[index];
+              const emphasis = index === lead ? "primary" : "secondary";
+              const fields = {
+                ride_id: rideId,
+                child_id: rider.child_id,
+                revision: String(revision),
+                version: String(h?.version ?? 0),
+              };
+              const before = status === "scheduled" || status === "picked_up";
+              const meets =
+                h && settled && before
+                  ? h.recipient_id === actor
+                    ? "You"
+                    : h.recipient_name
+                  : "";
+              const times = [
+                h?.picked_up_at &&
+                  `Picked up ${rideClock(h.picked_up_at, timezone)}`,
+                h?.arrived_at && `Arrived ${rideClock(h.arrived_at, timezone)}`,
+                h?.completed_at &&
+                  `Handed off ${rideClock(h.completed_at, timezone)}`,
+              ]
+                .filter(Boolean)
+                .join(" · ");
+              const waiting = cancelled
+                ? null
+                : !h
+                  ? own
+                    ? null
+                    : `Waiting for ${familyLabel(familyNames[rider.family_id], name)} to say who meets ${name}`
+                  : status === "awaiting_handoff" && !receives
+                    ? `Waiting for ${h.recipient_name} to confirm the handoff`
+                    : status === "picked_up" && !isDriver && driverName
+                      ? `${name} is with ${driverName}`
+                      : status === "scheduled" &&
+                          started &&
+                          !isDriver &&
+                          driverName
+                        ? `Waiting for ${driverName} to confirm pickup`
+                        : null;
+              const canChange = own && !started && !cancelled;
+              return (
+                <UI.ListItem
+                  key={rider.child_id}
+                  style={
+                    index === rows.length - 1
+                      ? { borderBottomWidth: 0 }
+                      : undefined
+                  }
+                >
+                  <UI.Article aria-label={name} style={{ gap: spacing.sm }}>
+                    <View
+                      style={[styles.row, { justifyContent: "space-between" }]}
+                    >
+                      <View style={[styles.row, { flex: 1 }]}>
+                        <Avatar name={name} tone={avatarTones[index % 3]} />
+                        <UI.Heading3
+                          id={childRowId(rideId, rider.child_id)}
+                          tabIndex={-1}
+                          style={{ flex: 1, marginTop: 0, marginBottom: 0 }}
+                        >
+                          {name}
+                        </UI.Heading3>
+                      </View>
+                      <View aria-live="polite">
+                        <StatusBadge
+                          tone={
+                            status === "awaiting_handoff"
+                              ? "attention"
+                              : status === "scheduled"
+                                ? "neutral"
+                                : "positive"
+                          }
+                        >
+                          {progressLabel(status)}
+                        </StatusBadge>
+                      </View>
+                    </View>
+                    {meets ? (
+                      <View
+                        style={[
+                          styles.row,
+                          { justifyContent: "space-between" },
+                        ]}
+                      >
+                        <UI.Small style={{ color: colors.muted }}>
+                          {`Who meets ${name}?`}
+                        </UI.Small>
+                        <UI.Small
+                          style={{ fontWeight: "600", textAlign: "right" }}
+                        >
+                          {meets}
+                        </UI.Small>
+                      </View>
+                    ) : null}
+                    {times ? (
+                      <UI.Small style={{ color: colors.muted }}>
+                        {times}
+                      </UI.Small>
+                    ) : null}
+                    {waiting && (
+                      <UI.Small style={{ color: colors.muted }}>
+                        {waiting}
+                      </UI.Small>
+                    )}
+                    {step === "choose" && h && (
+                      <UI.Paragraph className="notice attention">
+                        {`${h.recipient_name} can’t meet ${name} anymore. Choose someone else.`}
+                      </UI.Paragraph>
+                    )}
+                    {step === "choose" && (
+                      <HandoffForm
+                        key={`meet-${h?.version ?? 0}`}
+                        command="designateRecipient"
+                        fields={{ ...fields, recipient_id: actor ?? "" }}
+                        label={`I’ll meet ${name}`}
+                        emphasis={emphasis}
+                      />
+                    )}
+                    {step === "pickup" && (
+                      <HandoffForm
+                        key={`pickup-${h?.version}`}
+                        command="recordPickup"
+                        fields={fields}
+                        label={`Picked up ${name}`}
+                        emphasis={emphasis}
+                      />
+                    )}
+                    {step === "arrive" && (
+                      <HandoffForm
+                        key={`arrival-${h?.version}`}
+                        command="reportArrival"
+                        fields={fields}
+                        label={`Arrived with ${name}`}
+                        emphasis={emphasis}
+                      />
+                    )}
+                    {step === "receive" && (
+                      <HandoffForm
+                        key={`receipt-${h?.version}`}
+                        command="confirmHandoff"
+                        fields={fields}
+                        label={`I have ${name}`}
+                        emphasis={emphasis}
+                      />
+                    )}
+                    {canChange && (
+                      <MeetChange
+                        key={`change-${h?.version ?? 0}`}
+                        child={name}
+                        fields={fields}
+                        actor={actor}
+                        others={family.filter(
+                          (g) => g.id !== (settled ? h?.recipient_id : actor),
+                        )}
+                      />
+                    )}
+                  </UI.Article>
+                </UI.ListItem>
+              );
+            },
+          )}
+        </UI.List>
+        <Disclosure title="History">
+          {events.data.length ? (
+            <UI.List className="activity-list">
+              {events.data.map((event) => (
+                <UI.ListItem key={event.request_id}>
+                  <UI.Small>
+                    <UI.Inline dateTime={event.occurred_at}>
+                      {rideClock(event.occurred_at, timezone)}
+                    </UI.Inline>
+                    {" · "}
+                    {historyText(
+                      event.kind,
+                      event.actor_name,
+                      riders.data.find((r) => r.child_id === event.child_id)
+                        ?.display_name ?? "a rider",
+                    )}
+                  </UI.Small>
+                </UI.ListItem>
+              ))}
+            </UI.List>
+          ) : (
+            <UI.Small style={{ color: colors.muted }}>Nothing yet.</UI.Small>
+          )}
+        </Disclosure>
+      </UI.Section>
+    );
+  },
 );

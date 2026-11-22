@@ -4,10 +4,11 @@ import { createScreen } from "@/ui/remote";
 import Link from "@/ui/link";
 import { familyPath, useActiveFamily } from "@/services/active-family";
 import { FamilyMembershipStatus } from "./family-membership-status";
-import { PageHeading, EmptyState, Avatar, Icon } from "./presentation";
+import { PageHeading, EmptyState, Icon } from "./presentation";
 import { colors } from "@/ui/styles";
 import { createClient } from "@/lib/supabase/client";
 import { HomeDriverCoverage } from "./home-driver-coverage";
+import { RideUpdates } from "./ride-updates";
 
 async function loadCircles(client: ReturnType<typeof createClient>) {
   const pageSize = 1000;
@@ -37,56 +38,44 @@ function HomeContent({ circles }: { circles: { id: string; name: string }[] }) {
   const { data: family } = useActiveFamily();
   return (
     <>
-      <PageHeading
-        title="Home"
-        action={
-          <Link className="button secondary" href="/app/rides/new">
-            <Icon name="plus" size={16} />
-            Plan a ride
-          </Link>
-        }
-      >
-        {family?.name}
-      </PageHeading>
+      <PageHeading title="Home">{family?.name}</PageHeading>
       {circles.length > 0 && <HomeDriverCoverage circles={circles} />}
-      <UI.Box className="dashboard-grid">
-        {family && (
-          <UI.Section className="panel">
-            <UI.Heading2>Your family</UI.Heading2>
-            <Link href={familyPath(family.id)}>
-              <Avatar name={family.name} />
-              {family.name}
-              <Icon name="chevron-right" size={16} />
-            </Link>
-          </UI.Section>
+      {circles.length > 0 && <RideUpdates />}
+      <UI.Section className="panel">
+        <UI.Heading2>Your circles</UI.Heading2>
+        {circles.length ? (
+          <UI.List className="link-list" style={{ marginVertical: 0 }}>
+            {circles.map((circle) => (
+              <UI.ListItem key={circle.id}>
+                <Link
+                  href={`/app/circles/${circle.id}`}
+                  style={{ alignSelf: "stretch" }}
+                >
+                  <UI.Box className="team-icon">
+                    <Icon name="users" />
+                  </UI.Box>
+                  <UI.Strong style={{ flex: 1 }}>{circle.name}</UI.Strong>
+                  <Icon name="chevron-right" size={18} color={colors.muted} />
+                </Link>
+              </UI.ListItem>
+            ))}
+          </UI.List>
+        ) : (
+          <EmptyState
+            icon="users"
+            title="Start a circle"
+            href={family ? familyPath(family.id) : "/app/profile"}
+            action="Create a circle"
+          >
+            A circle is the group of families you share rides with: a team, a
+            class, a street.
+          </EmptyState>
         )}
-        <UI.Section className="panel">
-          <UI.Heading2>Your circles</UI.Heading2>
-          {circles.length ? (
-            <UI.List className="link-list">
-              {circles.map((circle) => (
-                <UI.ListItem key={circle.id}>
-                  <Link href={`/app/circles/${circle.id}`}>
-                    <UI.Box className="team-icon">
-                      <Icon name="shield" />
-                    </UI.Box>
-                    {circle.name}
-                    <Icon name="chevron-right" size={16} />
-                  </Link>
-                </UI.ListItem>
-              ))}
-            </UI.List>
-          ) : (
-            <EmptyState title="Share the driving">
-              Create a circle from your family, or join one by invitation.
-            </EmptyState>
-          )}
-          <Link className="text-link" href="/app/invitations">
-            Accept an invitation
-            <Icon name="arrow-right" size={16} color={colors.green} />
-          </Link>
-        </UI.Section>
-      </UI.Box>
+        <Link className="text-link" href="/app/invitations">
+          Have an invitation link?
+          <Icon name="arrow-right" size={16} color={colors.blue} />
+        </Link>
+      </UI.Section>
     </>
   );
 }

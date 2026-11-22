@@ -4,9 +4,11 @@ import Link from "@/ui/link";
 export default function Missing() {
   return (
     <AuthShell>
-      <Heading1>Page unavailable</Heading1>
-      <Paragraph>This page could not be found.</Paragraph>
-      <Link href="/app">Open Pool</Link>
+      <Heading1>Page not found</Heading1>
+      <Paragraph>That link doesn’t lead anywhere in Pool.</Paragraph>
+      <Link className="button primary" href="/app">
+        Go to Pool
+      </Link>
     </AuthShell>
   );
 }

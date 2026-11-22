@@ -8,8 +8,9 @@
 - (void)testVoiceOverSignupNavigation {
   XCUIApplication *app = [[XCUIApplication alloc] initWithBundleIdentifier:@"dev.pool.prototype"];
   [app launch];
-  XCUIElement *brand = [[app descendantsMatchingType:XCUIElementTypeAny] matchingIdentifier:@"brand"].firstMatch;
-  XCTAssertTrue([brand waitForExistenceWithTimeout:60]);
+  // The signed-out front door (src/app/index.tsx).
+  XCUIElement *landing = [[app descendantsMatchingType:XCUIElementTypeAny] matchingPredicate:[NSPredicate predicateWithFormat:@"label == %@", @"Share the driving"]].firstMatch;
+  XCTAssertTrue([landing waitForExistenceWithTimeout:60]);
   [[XCUIDevice sharedDevice].system openURL:[NSURL URLWithString:@"pool:///sign-up"]];
   XCUIApplication *springboard = [[XCUIApplication alloc] initWithBundleIdentifier:@"com.apple.springboard"];
   if ([springboard.buttons[@"Open"] waitForExistenceWithTimeout:3]) [springboard.buttons[@"Open"] tap];

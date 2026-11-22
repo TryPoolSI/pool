@@ -1,65 +1,89 @@
-import { ScrollView, View, Text, useWindowDimensions } from "react-native";
-import { Brand } from "@/features/app/presentation";
+import { Image, ScrollView, View, Text } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import logoMark from "@/assets/logo-mark.png";
 import Link from "@/ui/link";
-import { colors, styles } from "@/ui/styles";
+import { colors, fonts, spacing, styles } from "@/ui/styles";
+
+// The signed-out front door: the logo, the promise, two ways in.
 export default function Landing() {
-  const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.canvas }}
-      contentContainerStyle={{ padding: 24, paddingTop: 48 }}
+      contentContainerStyle={{
+        flexGrow: 1,
+        justifyContent: "center",
+        padding: spacing.xxl,
+        paddingTop: Math.max(spacing.xxxl, insets.top),
+        paddingBottom: Math.max(spacing.xxxl, insets.bottom),
+      }}
     >
-      <View style={{ maxWidth: 1100, width: "100%", alignSelf: "center" }}>
-        <Brand />
-        <View
+      <View
+        style={{
+          width: "100%",
+          maxWidth: 440,
+          alignSelf: "center",
+          alignItems: "center",
+          gap: spacing.lg,
+        }}
+      >
+        <Image
+          source={logoMark}
+          accessibilityIgnoresInvertColors
+          aria-hidden={true}
+          style={{ width: 128, height: 128 }}
+        />
+        <Text
           style={[
-            styles.panel,
-            { padding: width < 650 ? 28 : 72, marginTop: 70 },
+            styles.text,
+            {
+              fontFamily: fonts.display,
+              fontSize: 40,
+              lineHeight: 46,
+              fontWeight: "800",
+              letterSpacing: -1.6,
+            },
           ]}
         >
-          <Text
-            style={[
-              styles.text,
-              { fontSize: 12, fontWeight: "700", letterSpacing: 1.1 },
-            ]}
+          pool.
+        </Text>
+        <Text
+          role="heading"
+          aria-level={1}
+          style={[styles.text, styles.h1, { textAlign: "center", marginBottom: 0 }]}
+        >
+          Share the driving
+        </Text>
+        <Text
+          style={[
+            styles.text,
+            { color: colors.muted, textAlign: "center", maxWidth: 360 },
+          ]}
+        >
+          Plan school and activity rides with families you trust. See who’s
+          driving each one, and know when your child has been handed off.
+        </Text>
+        <View
+          style={{
+            alignSelf: "stretch",
+            gap: spacing.md,
+            marginTop: spacing.lg,
+          }}
+        >
+          <Link
+            className="button primary"
+            href="/sign-up"
+            style={{ alignSelf: "stretch" }}
           >
-            SHARE THE DRIVING
-          </Text>
-          <Text
-            role="heading"
-            aria-level={1}
-            style={[
-              styles.text,
-              styles.h1,
-              {
-                fontSize: width < 650 ? 36 : 56,
-                lineHeight: width < 650 ? 44 : 68,
-                maxWidth: 600,
-                marginVertical: 20,
-              },
-            ]}
+            Create an adult account
+          </Link>
+          <Link
+            className="button secondary"
+            href="/sign-in"
+            style={{ alignSelf: "stretch" }}
           >
-            A smoother ride for every family.
-          </Text>
-          <Text style={[styles.text, { color: colors.muted, maxWidth: 540 }]}>
-            Coordinate rides with your circle, agree on a driver and confirm
-            every child’s handoff — together.
-          </Text>
-          <View
-            style={{
-              flexDirection: "row",
-              gap: 12,
-              flexWrap: "wrap",
-              marginTop: 30,
-            }}
-          >
-            <Link className="button primary" href="/sign-up">
-              Create an adult account
-            </Link>
-            <Link className="button secondary" href="/sign-in">
-              Sign in
-            </Link>
-          </View>
+            Sign in
+          </Link>
         </View>
       </View>
     </ScrollView>

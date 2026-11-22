@@ -1,14 +1,17 @@
 import * as UI from "@/ui/elements";
+import { styles } from "@/ui/styles";
 
 export const invalidInvitationLink =
-  "Paste the full Pool invitation link that was shared with you.";
+  "That isn’t a full Pool invitation link. Copy the whole link from the message you were sent and paste it again.";
 
 export function InvitationLinkField({
   value,
   onChange,
+  hint,
 }: {
   value: string;
   onChange: (value: string) => void;
+  hint?: string;
 }) {
   return (
     <UI.Label>
@@ -20,6 +23,7 @@ export function InvitationLinkField({
         onChange={(event) => onChange(event.target.value)}
         autoComplete="off"
       />
+      {hint ? <UI.Inline style={styles.hint}>{hint}</UI.Inline> : null}
     </UI.Label>
   );
 }

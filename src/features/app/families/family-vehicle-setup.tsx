@@ -1,12 +1,71 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useFocusEffect } from "expo-router";
-import { useCallback, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import type { Database } from "@/lib/supabase/database.types";
+import { driverAction } from "@/services/driver-actions";
+import { CommandForm } from "@/ui/command-form";
 import * as UI from "@/ui/elements";
-import { styles } from "@/ui/styles";
-import { AddVehicleForm } from "../driver-form";
-import { OutcomeFocus } from "../outcome-focus";
+import { colors } from "@/ui/styles";
+import { AddVehicleForm, DriverForm, VehicleFields } from "../driver-form";
+import { ActionDialog, Disclosure, Icon } from "../presentation";
 
+export type Car = Pick<
+  Database["public"]["Tables"]["vehicles"]["Row"],
+  "id" | "label" | "passenger_seats" | "version" | "retired_at"
+>;
+
+export const seatCount = (seats: number) =>
+  `${seats} passenger ${seats === 1 ? "seat" : "seats"}`;
+
+// One car: its name, its seats, and a sheet to change or remove it.
+export function CarRow({ car }: { car: Car }) {
+  const fields = { vehicle_id: car.id, version: String(car.version) };
+  return (
+    <UI.Box className="child-row" role="group" aria-label={car.label}>
+      <UI.Box className="team-icon">
+        <Icon name="car" />
+      </UI.Box>
+      <UI.Box style={{ flex: 1 }}>
+        <UI.Heading3 style={{ marginTop: 0, marginBottom: 0 }}>
+          {car.label}
+        </UI.Heading3>
+        <UI.Small style={{ color: colors.muted }}>
+          {seatCount(car.passenger_seats)}
+        </UI.Small>
+      </UI.Box>
+      <ActionDialog
+        title={`Edit ${car.label}`}
+        triggerLabel="Edit"
+        tone="quiet"
+      >
+        <DriverForm command="saveVehicle" fields={fields} label="Save changes">
+          <VehicleFields label={car.label} seats={car.passenger_seats} />
+        </DriverForm>
+        <Disclosure title="Remove this car">
+          <UI.Paragraph>
+            {car.label} will no longer be offered for rides. You can restore it
+            later from Cars.
+          </UI.Paragraph>
+          <CommandForm
+            action={(values) => driverAction({}, values)}
+            fields={{
+              ...fields,
+              command: "saveVehicle",
+              label: car.label,
+              passenger_seats: String(car.passenger_seats),
+              retire: "yes",
+              confirm: "yes",
+            }}
+            label="Remove car"
+            tone="danger"
+          />
+        </Disclosure>
+      </ActionDialog>
+    </UI.Box>
+  );
+}
+
+// The Cars card on My family. A guardian sees the cars they drive; the
+// family-wide check only decides how the empty card is worded.
 export function FamilyVehicleSetup({
   userId,
   familyId,
@@ -14,89 +73,56 @@ export function FamilyVehicleSetup({
   userId: string;
   familyId: string;
 }) {
-  const [skipped, setSkipped] = useState(false);
-  const [adding, setAdding] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const queryClient = useQueryClient();
-  const queryKey = ["account", userId, "family-has-active-vehicle", familyId];
-  const { data, isError, isFetching, refetch } = useQuery({
-    queryKey,
+  const cars = useQuery({
+    queryKey: ["account", userId, "family-cars", familyId],
     queryFn: async ({ signal }) => {
       const client = createClient();
-      const { data, error } = await client
-        .rpc("family_has_active_vehicle", { p_family_id: familyId })
-        .abortSignal(signal);
-      if (!error) return data;
-      if (error.code !== "PGRST202") throw error;
-
-      // Before the family-wide check is deployed, RLS only exposes the signed-in guardian's cars.
-      const ownVehicles = await client
+      const own = await client
         .from("vehicles")
-        .select("id")
+        .select("id,label,passenger_seats,version,retired_at")
         .eq("driver_id", userId)
         .is("retired_at", null)
-        .limit(1)
+        .order("created_at")
         .abortSignal(signal);
-      if (ownVehicles.error) throw ownVehicles.error;
-      return ownVehicles.data.length > 0;
+      if (own.error) throw new Error("Pool couldn’t load your cars.");
+      const family = own.data.length
+        ? { data: true, error: null }
+        : await client
+            .rpc("family_has_active_vehicle", { p_family_id: familyId })
+            .abortSignal(signal);
+      // Before the family-wide check is deployed, only the guardian's own cars count.
+      return { own: own.data, familyHasCar: family.error ? false : family.data };
     },
   });
-
-  useFocusEffect(
-    useCallback(() => {
-      void refetch();
-      return () => {
-        setSkipped(false);
-        setAdding(false);
-        setSaved(false);
-      };
-    }, [refetch]),
-  );
-
-  if (saved) {
-    return (
-      <OutcomeFocus state={{ message: "Car added" }}>
-        <UI.Paragraph role="status">Car added</UI.Paragraph>
-      </OutcomeFocus>
-    );
-  }
-  if (skipped) return null;
-  if (isError && !adding) {
-    return (
-      <UI.Box>
-        <UI.Paragraph role="alert">Car setup could not be checked.</UI.Paragraph>
-        <UI.Button onPress={() => void refetch()}>Retry car setup</UI.Button>
-      </UI.Box>
-    );
-  }
-  if (!adding && (data !== false || isFetching)) return null;
-
   return (
-    <UI.Section className="panel">
-      <UI.Paragraph>Add the car you usually drive.</UI.Paragraph>
-      {adding && (
-        <AddVehicleForm
-          onVehicleSaved={async () => {
-            await queryClient.cancelQueries({ queryKey, exact: true });
-            queryClient.setQueryData(queryKey, true);
-            setAdding(false);
-            setSaved(true);
-          }}
-        />
-      )}
-      <UI.Box style={styles.actionRow}>
-        {!adding && (
-          <UI.Button onPress={() => setAdding(true)}>Add your car</UI.Button>
+    <UI.Section>
+      <UI.Box className="section-head">
+        <UI.Heading2 style={{ marginBottom: 0 }}>Cars</UI.Heading2>
+        {cars.data && (
+          <ActionDialog title="Add a car">
+            <AddVehicleForm />
+          </ActionDialog>
         )}
-        <UI.Button
-          onPress={() => {
-            setAdding(false);
-            setSkipped(true);
-          }}
-        >
-          Skip
-        </UI.Button>
       </UI.Box>
+      {cars.isPending && <UI.Loading />}
+      {cars.isError && (
+        <>
+          <UI.Paragraph role="alert">
+            {cars.data
+              ? "Pool can’t refresh your cars right now, so this list may be out of date."
+              : cars.error.message}
+          </UI.Paragraph>
+          <UI.Button onPress={() => void cars.refetch()}>Try again</UI.Button>
+        </>
+      )}
+      {cars.data?.own.length === 0 && (
+        <UI.Paragraph style={{ marginVertical: 0 }}>
+          {cars.data.familyHasCar
+            ? "Another guardian has added a car. Add yours if you drive too."
+            : "Add the car you usually drive so you can offer to drive."}
+        </UI.Paragraph>
+      )}
+      {cars.data?.own.map((car) => <CarRow key={car.id} car={car} />)}
     </UI.Section>
   );
 }

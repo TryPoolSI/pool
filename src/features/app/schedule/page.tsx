@@ -1,198 +1,298 @@
-import { useWindowDimensions } from "react-native";
+import { Pressable, View, useWindowDimensions } from "react-native";
+import { router, useLocalSearchParams } from "expo-router";
 import * as UI from "@/ui/elements";
 import { createScreen } from "@/ui/remote";
 import Link from "@/ui/link";
-import { PageHeading, EmptyState, ActionDialog, Icon } from "../presentation";
-import { colors, spacing, styles } from "@/ui/styles";
+import { PageHeading, EmptyState, Icon } from "../presentation";
+import { colors, compactHeight, radius, spacing, styles } from "@/ui/styles";
+import { tap } from "@/ui/haptics";
 import { createClient } from "@/lib/supabase/client";
-import { addDays, dateInZone, validTimezone, weekRange } from "@/lib/rides";
+import {
+  addDays,
+  dateInZone,
+  daysRange,
+  deviceTimezone,
+  localDate,
+  type RideOffer,
+} from "@/lib/rides";
+import type { DriverStatus } from "@/lib/drivers";
+import { rideSummary } from "@/lib/ride-state";
 import { RideList } from "../ride-list";
 
-const dayLabel = new Intl.DateTimeFormat("en", {
-  weekday: "long",
-  month: "long",
-  day: "numeric",
-  year: "numeric",
-  timeZone: "UTC",
-});
+const utc = { timeZone: "UTC" } as const;
+const monthDay = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", ...utc });
+const longDay = new Intl.DateTimeFormat("en", { weekday: "long", month: "short", day: "numeric", ...utc });
+const weekday = new Intl.DateTimeFormat("en", { weekday: "long", ...utc });
+const at = (date: string) => new Date(`${date}T12:00:00Z`);
+
+function validDate(value?: string) {
+  if (typeof value !== "string") return undefined;
+  try {
+    localDate(value);
+    return value;
+  } catch {
+    return undefined;
+  }
+}
+
 async function loadSchedule({
   searchParams,
 }: {
-  searchParams: Promise<{ date?: string; timezone?: string }>;
+  searchParams: Promise<{ from?: string; date?: string }>;
 }) {
   const query = await searchParams;
-  let range: ReturnType<typeof weekRange>, zone: string;
-  try {
-    zone = validTimezone(query.timezone || "UTC");
-    range = weekRange(query.date || dateInZone(new Date(), zone), zone);
-  } catch {
-    return {
-      early: (
-        <>
-          <UI.Heading1>Weekly schedule</UI.Heading1>
-          <UI.Paragraph role="alert">
-            Choose a valid date and IANA timezone.
-          </UI.Paragraph>
-          <Link href="/app/schedule">Open current week in UTC</Link>
-        </>
-      ),
-    };
-  }
+  // The Schedule runs on the device's clock and opens on the seven days from
+  // today, because past days are rarely what anyone came for.
+  const zone = deviceTimezone();
+  const today = dateInZone(new Date(), zone);
+  const asked = validDate(query.date);
+  let first = validDate(query.from) ?? today;
+  // A link to a day outside the strip starts the strip on that day.
+  if (asked && (asked < first || asked > addDays(first, 6))) first = asked;
+  const range = daysRange(first, 7, zone);
   const client = await createClient();
   const offers = await client.rpc("ride_offers", {
     p_from: range.from,
     p_until: range.until,
   });
-  if (offers.error) throw new Error("Schedule could not be loaded");
+  if (offers.error) throw new Error("Pool couldn’t load this week. Try again.");
   const statuses = await client.rpc("driver_statuses", {
     p_ride_ids: [...new Set(offers.data.map((ride) => ride.id))],
   });
   if (statuses.error)
-    throw new Error("Assignment statuses could not be loaded");
-  const weekLink = (date: string) =>
-    `/app/schedule?date=${date}&timezone=${encodeURIComponent(zone)}`;
-  const unique = [
-    ...new Map(offers.data.map((ride) => [ride.id, ride])).values(),
-  ];
-  return { model: { range, zone, offers, statuses, weekLink, unique } };
+    throw new Error("Pool couldn’t load this week. Try again.");
+  return {
+    model: { first, zone, offers: offers.data, statuses: statuses.data },
+  };
 }
 
-function ScheduleDays({
-  monday,
+function Week({
+  first,
   zone,
-  rides,
+  offers,
+  statuses,
 }: {
-  monday: string;
+  first: string;
   zone: string;
-  rides: { starts_at: string }[];
+  offers: RideOffer[];
+  statuses: DriverStatus[];
 }) {
+  const params = useLocalSearchParams<{ date?: string }>();
   const { width } = useWindowDimensions();
+  // Seven 44px days and their gaps need 332px. On a narrower phone the strip
+  // runs to the screen edges (the shell's 16px inset) with hairline gaps, so
+  // every day stays a full-size target on one row.
+  const tight = width < 332 + 2 * spacing.lg;
   const today = dateInZone(new Date(), zone);
-  const counts = new Map<string, number>();
-  for (const ride of rides) {
-    const date = dateInZone(new Date(ride.starts_at), zone);
-    counts.set(date, (counts.get(date) ?? 0) + 1);
+  const days = Array.from({ length: 7 }, (_, index) => addDays(first, index));
+  // The day comes straight from the URL so a tap responds before data returns.
+  const asked = validDate(params.date);
+  const selected =
+    asked && days.includes(asked)
+      ? asked
+      : days.includes(today)
+        ? today
+        : first;
+  const dayOf = (ride: RideOffer) => dateInZone(new Date(ride.starts_at), zone);
+  // One mark per day: sun if any ride there still needs someone, else sky.
+  const marks = new Map<string, "attention" | "settled">();
+  for (const ride of offers) {
+    if (ride.cancelled_at || ride.status === "declined") continue;
+    const tone = rideSummary({
+      familyStatus: ride.status,
+      status: statuses.find((item) => item.ride_id === ride.id),
+    }).tone;
+    const day = dayOf(ride);
+    if (tone === "act" || tone === "open" || tone === "waiting")
+      marks.set(day, "attention");
+    else if (!marks.has(day)) marks.set(day, "settled");
   }
-
+  const dayRides = offers.filter((ride) => dayOf(ride) === selected);
+  const count = new Set(dayRides.map((ride) => ride.id)).size;
+  // A strip opened from a link to some other week stays on that week while the
+  // person picks days in it, so the week it starts on goes into the URL too.
+  const select = (date: string) =>
+    router.setParams(first === today ? { date } : { from: first, date });
+  const move = (start: string) => router.setParams({ from: start, date: start });
+  const planHref = `/app/rides/new?date=${selected}`;
   return (
-    <UI.Box>
-      <UI.Small>Choose a day to plan a ride</UI.Small>
-      <UI.Box className="week-strip" role="group" aria-label="Full week">
-        {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day, index) => {
-          const date = addDays(monday, index);
-          const count = counts.get(date) ?? 0;
-          const rideCount = `${count} ${count === 1 ? "ride" : "rides"}`;
+    <>
+      <View
+        role="navigation"
+        accessibilityLabel="Weeks"
+        style={[styles.row, { marginBottom: spacing.md }]}
+      >
+        <UI.Heading2 style={{ flex: 1, marginBottom: 0 }}>
+          {monthDay.format(at(first))} – {monthDay.format(at(days[6]))}
+        </UI.Heading2>
+        {first !== today && (
+          <UI.Button
+            className="quiet"
+            onPress={() => router.replace("/app/schedule")}
+          >
+            Today
+          </UI.Button>
+        )}
+        {(
+          [
+            ["Previous week", "chevron-left", addDays(first, -7)],
+            ["Next week", "chevron-right", addDays(first, 7)],
+          ] as const
+        ).map(([label, icon, date]) => (
+          <Pressable
+            key={label}
+            accessibilityRole="button"
+            accessibilityLabel={label}
+            onPress={() => move(date)}
+            style={({ pressed }) => [
+              styles.button,
+              styles.iconButton,
+              { alignSelf: "center" },
+              pressed ? styles.pressed : undefined,
+            ]}
+          >
+            <Icon name={icon} size={20} />
+          </Pressable>
+        ))}
+      </View>
+      <View
+        role="tablist"
+        accessibilityLabel="Days this week"
+        style={{
+          flexDirection: "row",
+          gap: tight ? 2 : spacing.xs,
+          marginHorizontal: tight ? -spacing.lg : 0,
+        }}
+      >
+        {days.map((date) => {
+          const isSelected = date === selected;
           const isToday = date === today;
-          const label = dayLabel.format(new Date(`${date}T00:00:00Z`));
+          const mark = marks.get(date);
+          const name = longDay.format(at(date));
           return (
-            <Link
+            <Pressable
               key={date}
-              href={`/app/rides/new?${new URLSearchParams({ date, timezone: zone })}`}
-              aria-label={`Plan a ride for ${label}, ${rideCount}`}
-              aria-current={isToday ? "date" : undefined}
-              style={[
-                { alignSelf: "stretch", backgroundColor: "transparent" },
-                width <= 650
-                  ? { flexBasis: "22%", flexGrow: 1, maxWidth: "25%" }
-                  : { flex: 1 },
+              role="tab"
+              aria-selected={isSelected}
+              accessibilityState={{ selected: isSelected }}
+              accessibilityLabel={`${name}${isToday ? ", today" : ""}${
+                mark === "attention"
+                  ? ", needs attention"
+                  : mark
+                    ? ", rides covered"
+                    : ", no rides"
+              }`}
+              onPress={() => {
+                if (isSelected) return;
+                tap();
+                select(date);
+              }}
+              style={({ pressed }) => [
+                {
+                  flex: 1,
+                  minHeight: 68,
+                  paddingVertical: spacing.sm,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 2,
+                  borderRadius: radius.md,
+                  borderWidth: 1.5,
+                  borderColor: isSelected
+                    ? colors.sky
+                    : isToday
+                      ? colors.blue
+                      : "transparent",
+                  backgroundColor: isSelected ? colors.sky : colors.surface,
+                },
+                pressed ? styles.pressed : undefined,
               ]}
             >
-              <UI.Box className={`week-day${isToday ? " today" : ""}`}>
-                <UI.Inline>{day}</UI.Inline>
-                <UI.Strong>{Number(date.slice(-2))}</UI.Strong>
-                <UI.Small>{count ? rideCount : "—"}</UI.Small>
-                <Icon
-                  name="plus"
-                  size={16}
-                  color={isToday ? "white" : colors.green}
-                />
-              </UI.Box>
-            </Link>
+              <UI.Inline
+                style={{
+                  fontSize: 12,
+                  lineHeight: 16,
+                  fontWeight: "600",
+                  color: isSelected ? colors.ink : colors.muted,
+                }}
+              >
+                {name.slice(0, 3)}
+              </UI.Inline>
+              <UI.Strong style={{ fontSize: 18, lineHeight: 24 }}>
+                {Number(date.slice(-2))}
+              </UI.Strong>
+              <View
+                aria-hidden
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: radius.full,
+                  backgroundColor: !mark
+                    ? "transparent"
+                    : mark === "attention"
+                      ? isSelected
+                        ? colors.sunInk
+                        : colors.sun
+                      : isSelected
+                        ? colors.blue
+                        : colors.sky,
+                }}
+              />
+            </Pressable>
           );
         })}
-      </UI.Box>
-    </UI.Box>
+      </View>
+      <View
+        role="tabpanel"
+        accessibilityLabel={longDay.format(at(selected))}
+        style={{ marginTop: spacing.xl }}
+      >
+        <View style={[styles.row, { minHeight: compactHeight }]}>
+          <UI.Box style={{ flex: 1 }}>
+            <UI.Heading2 style={{ marginBottom: 0 }}>
+              {selected === today ? "Today" : longDay.format(at(selected))}
+            </UI.Heading2>
+            {count > 0 && (
+              <UI.Small style={{ color: colors.muted }}>
+                {count} {count === 1 ? "ride" : "rides"}
+              </UI.Small>
+            )}
+          </UI.Box>
+          {count > 0 && selected >= today && (
+            <Link className="button secondary" href={planHref}>
+              <Icon name="plus" size={16} />
+              Plan a ride
+            </Link>
+          )}
+        </View>
+        {count ? (
+          <RideList offers={dayRides} statuses={statuses} showDate={false} />
+        ) : (
+          <UI.Section className="panel">
+            <EmptyState
+              icon="calendar"
+              title={`Nothing on ${selected === today ? "today" : weekday.format(at(selected))}`}
+              href={selected >= today ? planHref : undefined}
+              action="Plan a ride"
+            >
+              {selected >= today
+                ? "Plan a ride for this day, or pick another day above."
+                : "No rides happened on this day."}
+            </EmptyState>
+          </UI.Section>
+        )}
+      </View>
+    </>
   );
 }
 
 const Schedule = createScreen(
   loadSchedule,
-  ({ range, zone, offers, statuses, weekLink, unique }) => (
+  (model) => (
     <>
-      <PageHeading
-        title="Schedule"
-        action={
-          <Link className="button primary" href="/app/rides/new">
-            <Icon name="plus" size={16} color="white" />
-            Plan a ride
-          </Link>
-        }
-      >
-        Week of{" "}
-        {new Intl.DateTimeFormat("en", {
-          month: "long",
-          day: "numeric",
-          year: "numeric",
-          timeZone: "UTC",
-        }).format(new Date(`${range.monday}T12:00:00Z`))}{" "}
-        · {zone}
-      </PageHeading>
-      <UI.Box
-        className="week-navigation"
-        role="navigation"
-        aria-label="Schedule weeks"
-      >
-        <UI.Box style={[styles.actionRow, { columnGap: spacing.lg }]}>
-          <Link
-            className="text-link"
-            href={weekLink(addDays(range.monday, -7))}
-          >
-            <Icon name="arrow-left" size={16} color={colors.green} />
-            Previous week
-          </Link>
-          <Link className="text-link" href={weekLink(range.next)}>
-            Next week
-            <Icon name="arrow-right" size={16} color={colors.green} />
-          </Link>
-        </UI.Box>
-        <ActionDialog
-          title="Choose week or timezone"
-          triggerStyle={{ marginVertical: 0, alignSelf: "auto" }}
-        >
-          <UI.Form className="auth-form week-filter">
-            <UI.Fieldset>
-              <UI.Label>
-                Week containing date
-                <UI.Field
-                  type="date"
-                  name="date"
-                  defaultValue={range.monday}
-                  required
-                />
-              </UI.Label>
-              <UI.Label>
-                Schedule timezone
-                <UI.Field
-                  name="timezone"
-                  defaultValue={zone}
-                  required
-                  maxLength={100}
-                />
-              </UI.Label>
-              <UI.Button type="submit">Show week</UI.Button>
-            </UI.Fieldset>
-          </UI.Form>
-        </ActionDialog>
-      </UI.Box>
-      <ScheduleDays monday={range.monday} zone={zone} rides={unique} />
-      {offers.data.length ? (
-        <RideList offers={offers.data} statuses={statuses.data} />
-      ) : (
-        <EmptyState title="A little room in the week">
-          No rides in this week. Plan a ride or wait for a family invitation.
-        </EmptyState>
-      )}
+      <PageHeading title="Schedule" />
+      <Week {...model} />
     </>
   ),
+  { retain: true },
 );
 export default Schedule;

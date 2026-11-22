@@ -6,8 +6,8 @@ export type FamilyChild = Pick<
 >;
 
 export const seatRequirements = {
-  standard: "Standard passenger seat",
-  booster: "Booster seat",
+  standard: "Standard",
+  booster: "Booster",
   "child-seat": "Child seat",
 };
 

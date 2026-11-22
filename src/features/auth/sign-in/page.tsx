@@ -22,8 +22,8 @@ function EmailConfirmed() {
     <>
       <UI.Paragraph role="status">{message}</UI.Paragraph>
       <UI.Paragraph>
-        Joining a family on a different browser or device? Sign in with the
-        invited email, then reopen the original invitation.
+        Joining with an invitation on another device? Sign in with the invited
+        email, then reopen the original invitation link.
       </UI.Paragraph>
     </>
   );
@@ -40,11 +40,11 @@ export default function SignIn() {
     <>
       <UI.Heading1>Sign in to Pool</UI.Heading1>
       {params.message === "signed-out" && (
-        <UI.Paragraph role="status">You are signed out.</UI.Paragraph>
+        <UI.Paragraph role="status">You’re signed out.</UI.Paragraph>
       )}
       {params.message === "password-updated" && (
         <UI.Paragraph role="status">
-          Your password has been updated. Sign in with your new password.
+          Password saved. Sign in with your new password.
         </UI.Paragraph>
       )}
       {params.message === "email-confirmed" && <EmailConfirmed />}
@@ -61,7 +61,6 @@ export default function SignIn() {
       <PasteInvitation />
       <UI.Nav aria-label="Account help">
         <Link href="/forgot-password">Forgot password?</Link>
-        <Link href="/resend-confirmation">Resend confirmation email</Link>
         <Link href={joining ? INVITATION_SIGN_UP : "/sign-up"}>
           Create an adult account
         </Link>

@@ -17,7 +17,7 @@ const saveArgs = (label, seats = 3) => ({
 });
 
 export async function familyVehiclePermissionTests(status, sql) {
-  const { a, b, d, out, bGuardian, driverGuardian, children, car, proposed, confirmed, anon } =
+  const { a, b, d, out, bGuardian, driverGuardian, children, car, planned, proposed, confirmed, anon } =
     await setup(status);
   const check = (db, family, code) =>
     rpc(db, "family_has_active_vehicle", { p_family_id: family }, code);
@@ -83,17 +83,16 @@ export async function familyVehiclePermissionTests(status, sql) {
     `select vehicle_id from public.driver_assignments where ride_id = '${ride.ride}' and released_at is null`,
   );
 
+  // A driver who was asked and has not answered yet may switch to another of
+  // their cars first. Their accept would confirm, so the source stays unanswered.
   const pending = await proposed();
-  await rpc(d.db, "accept_driver_proposal", {
-    ...pending.reply, p_available_seats: 3, p_restraints: true,
-  });
   await rpc(a.db, "consent_for_own_children", {
     ...pending.reply, p_family_id: a.family, p_child_ids: [children[0]],
   });
   const source = await rideStatus(pending, d.db);
   assert.equal(source.proposal_status, "pending");
   assert.equal(source.consent_count, 1);
-  assert.ok(source.accepted_at);
+  assert.equal(source.accepted_at, null);
   const request = changeArgs(source, alternate);
   await change(request, "42501", anon);
   await change(request, "PT404", a.db);
@@ -120,12 +119,18 @@ export async function familyVehiclePermissionTests(status, sql) {
   }, "PT409");
   await approve(request, b, children[1]);
   await approve(request, a, children[0]);
-  assert.equal(activeCar(pending), "");
+  assert.equal(activeCar(pending), "", "Family consent alone never assigns the car");
   await rpc(d.db, "accept_driver_proposal", {
     ...reply(request), p_available_seats: 3, p_restraints: false,
   }, "PT422");
   assert.equal(await accept(request), "confirmed");
   assert.equal(activeCar(pending), alternate);
+  const unasked = await proposed();
+  const direct = changeArgs(await rideStatus(unasked, d.db), alternate);
+  await change(direct);
+  assert.equal(await accept(direct), "confirmed", "Accepting the new car confirms without any family consent");
+  assert.equal(activeCar(unasked), alternate);
+  assert.equal((await rideStatus(unasked)).consent_count, 0);
 
   const ride = await confirmed();
   const original = await rideStatus(ride, d.db);
@@ -151,20 +156,59 @@ export async function familyVehiclePermissionTests(status, sql) {
   await change(changeArgs(await rideStatus(ride), third), "PT410");
   assert.equal(activeCar(ride), car);
 
+  // A confirmed driver keeps the current car until they say yes to the new one.
+  // They may change their mind while the request is open; consent is not needed.
   const second = changeArgs(original, alternate);
   await change(second);
-  await accept(second);
   const thirdRequest = changeArgs(await rideStatus(ride), third);
   await change(thirdRequest);
+  assert.equal((await rideStatus(ride)).proposal_id, thirdRequest.p_id);
   assert.equal((await rideStatus(ride)).accepted_at, null);
   assert.equal((await rideStatus(ride)).consent_count, 0);
   assert.equal(activeCar(ride), car);
+  await rpc(d.db, "accept_driver_proposal", {
+    ...reply(second), p_available_seats: 3, p_restraints: true,
+  }, "PT409");
   await approve(thirdRequest, a, children[0]);
-  await accept(thirdRequest);
-  assert.equal(activeCar(ride), car);
-  assert.equal(await approve(thirdRequest, b, children[1]), "confirmed");
+  assert.equal(activeCar(ride), car, "Family consent alone never changes the car");
+  assert.equal(await accept(thirdRequest), "confirmed", "The driver's accept confirms the car change in one go");
   assert.equal(activeCar(ride), third);
-  assert.equal((await rideStatus(ride)).current_driver_name, original.current_driver_name);
+  assert.equal(sql(
+    `select release_reason from public.driver_assignments where id = '${original.current_assignment_id}'`,
+  ), "replaced");
+  await rpc(b.db, "consent_for_own_children", {
+    ...reply(thirdRequest), p_family_id: b.family, p_child_ids: [children[1]],
+  }, "PT409");
+  const changed = await rideStatus(ride, d.db);
+  assert.equal(changed.current_driver_name, original.current_driver_name);
+  assert.equal(changed.coverage, "confirmed");
+  assert.equal(changed.is_current_driver, true);
+  assert.equal(changed.ride_revision, original.ride_revision, "A car change keeps the ride revision");
+  // Families hear it as a car switch, not as a new driver.
+  const told = await rpc(a.db, "ride_updates", { p_since: new Date(Date.now() - 3600_000).toISOString() });
+  assert.deepEqual(
+    told.filter((row) => row.ride_id === ride.ride && row.kind.startsWith("driver_") ).map((row) => row.kind),
+    [],
+  );
+  assert.equal(told.filter((row) => row.ride_id === ride.ride && row.kind === "car_changed").length, 1);
+  // The new assignment is an ordinary confirmed source for the next change.
+  const back = changeArgs(changed, alternate);
+  await change(back);
+  assert.equal(await accept(back), "confirmed");
+  assert.equal(activeCar(ride), alternate);
+
+  // An unanswered invitation does not hold up a car change.
+  const invited = await planned({ respond: false });
+  const asked = await rpc(a.db, "propose_driver", {
+    p_id: crypto.randomUUID(), p_ride_id: invited.ride, p_family_id: a.family, p_revision: 1,
+    p_driver_id: d.id, p_driver_family_id: d.family, p_vehicle_id: car, p_vehicle_version: 1,
+  });
+  assert.equal(await accept({ p_id: asked, p_revision: 2 }), "confirmed");
+  const swapCar = changeArgs(await rideStatus(invited, d.db), alternate);
+  await change(swapCar);
+  assert.equal(await accept(swapCar), "confirmed");
+  assert.equal(activeCar(invited), alternate);
+  assert.equal((await rideStatus(invited, b.db)).vehicle_id, alternate, "The invited family sees the new car");
 
   const late = await confirmed();
   const lateSource = await rideStatus(late);

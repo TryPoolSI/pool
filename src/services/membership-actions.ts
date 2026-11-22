@@ -6,6 +6,7 @@ import { forgetInvitation } from "@/services/invitation-link";
 import { createClient } from "@/lib/supabase/client";
 import { verifiedUser } from "@/lib/auth/identity";
 import {
+  invitationNotFound,
   membershipError,
   requiredText,
   uuid,
@@ -24,7 +25,10 @@ function invitationError(
   kind?: "guardian" | "circle",
 ): MembershipState {
   return {
-    error: membershipError(code, reason, kind),
+    error:
+      code === "PT404"
+        ? invitationNotFound
+        : membershipError(code, reason, kind),
     ...(code === "PT404" ? { issue: "invite-unavailable" } : {}),
     ...(code === "PT409" && reason === "active_family_exists"
       ? { issue: "active-family" }
@@ -44,7 +48,7 @@ async function executeMembership(
     command === "create-family" || command === "accept-invitation";
   const checkBeforeRetry: MembershipState = {
     error:
-      "Pool could not confirm the result. Check your current family before trying again.",
+      "Pool couldn’t confirm that went through. Open My family to check before you try again.",
     issue: "retry-membership",
   };
   const user = await verifiedUser(client).catch(() => null);
@@ -65,6 +69,7 @@ async function executeMembership(
       error: { code: string; message: string } | null;
     };
     let path: string | undefined;
+    let message = "Saved";
     switch (command) {
       case "create-family": {
         const created = await client.rpc("create_family", {
@@ -83,7 +88,10 @@ async function executeMembership(
         }
         if (!created.error) {
           await refreshMembership(user.id);
-          return { path: familyPath(created.data) };
+          return {
+            message: "Family created",
+            path: familyPath(created.data),
+          };
         }
         result = created;
         break;
@@ -94,6 +102,7 @@ async function executeMembership(
           p_name: requiredText(data, "name"),
         });
         if (!result.error) path = `/app/circles/${result.data}`;
+        message = "Circle created";
         break;
       case "create-invitation": {
         const kind = requiredText(data, "kind");
@@ -111,7 +120,7 @@ async function executeMembership(
           token: invitation.data[0].token,
           kind,
           message:
-            "Invitation created. Copy the link and deliver it manually. It expires in seven days.",
+            "Invitation ready. Copy the link and send it yourself. It works for 7 days.",
         };
       }
       case "preview-invitation":
@@ -136,7 +145,7 @@ async function executeMembership(
             },
           };
         }
-        if (data.get("accept") !== "yes") throw new Error("validation");
+        // Pressing "Join" is the acceptance; the database takes no separate flag.
         const familyChoice =
           kind === "circle" ? requiredText(data, "family_choice") : null;
         const accepted = await client.rpc("accept_invitation", {
@@ -163,12 +172,16 @@ async function executeMembership(
         }
         await refreshMembership(user.id);
         void forgetInvitation(token).catch(() => {});
-        return { path: familyPath(accepted.data) };
+        return {
+          message: kind === "guardian" ? "You joined the family" : "You joined the circle",
+          path: familyPath(accepted.data),
+        };
       }
       case "revoke-invitation":
         result = await client.rpc("revoke_invitation", {
           p_id: uuid(data, "invitation_id"),
         });
+        message = "Invitation revoked";
         break;
       case "remove-guardian":
         if (data.get("confirm") !== "yes") throw new Error("validation");
@@ -176,6 +189,7 @@ async function executeMembership(
           p_family_id: uuid(data, "family_id"),
           p_user_id: uuid(data, "user_id"),
         });
+        message = "Guardian removed";
         break;
       case "remove-family":
         if (data.get("confirm") !== "yes") throw new Error("validation");
@@ -183,6 +197,7 @@ async function executeMembership(
           p_circle_id: uuid(data, "circle_id"),
           p_family_id: uuid(data, "family_id"),
         });
+        message = "Family removed";
         break;
       default:
         throw new Error("validation");
@@ -197,7 +212,7 @@ async function executeMembership(
       };
     }
     revalidatePath("/app", "layout");
-    return { message: "Saved. Membership is up to date.", path };
+    return { message, path };
   } catch (error) {
     if (
       familyWrite &&

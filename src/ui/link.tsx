@@ -1,4 +1,4 @@
-import { Children, isValidElement } from "react";
+import { Children, isValidElement, useState } from "react";
 import { Link as RouterLink } from "expo-router";
 import {
   Pressable,
@@ -9,7 +9,14 @@ import {
   type ViewStyle,
 } from "react-native";
 import type { ReactNode } from "react";
-import { colors, controlHeight, spacing, styles, classStyle } from "./styles";
+import {
+  colors,
+  compactHeight,
+  radius,
+  spacing,
+  styles,
+  classStyle,
+} from "./styles";
 function linkLabel(children: ReactNode): string {
   return Children.toArray(children)
     .map((child) =>
@@ -41,6 +48,8 @@ export default function Link({
   onClick?: () => void;
 }) {
   const { width } = useWindowDimensions();
+  // expo-router's asChild slot drops function styles, so track the press here.
+  const [pressed, setPressed] = useState(false);
   const button = /button/.test(className);
   const primary = /primary/.test(className);
   const textLink = className.includes("text-link");
@@ -56,7 +65,7 @@ export default function Link({
           styles.text,
           styles.link,
           props["aria-current"]
-            ? { backgroundColor: colors.lime, borderRadius: 9 }
+            ? { backgroundColor: colors.skyWash, borderRadius: radius.sm }
             : undefined,
           classStyle(className, width),
           style,
@@ -72,28 +81,32 @@ export default function Link({
         accessibilityRole="link"
         accessibilityLabel={props["aria-label"] ?? linkLabel(children)}
         onPress={props.onClick}
-        style={StyleSheet.flatten([
-          button
-            ? styles.button
-            : {
-                minHeight: controlHeight,
-                flexDirection: "row",
-                alignItems: "center",
-                gap: textLink ? spacing.sm : spacing.md,
-                alignSelf: "flex-start",
-                maxWidth: "100%",
-              },
-          primary ? styles.primary : undefined,
-          className.includes("plain")
-            ? {
-                borderWidth: 0,
-                backgroundColor: "transparent",
-                alignSelf: "stretch",
-              }
-            : undefined,
-          props["aria-current"] ? { backgroundColor: colors.lime } : undefined,
-          style,
-        ])}
+        onPressIn={() => setPressed(true)}
+        onPressOut={() => setPressed(false)}
+        style={
+          StyleSheet.flatten([
+            button
+              ? styles.button
+              : {
+                  minHeight: compactHeight,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: textLink ? 6 : spacing.md,
+                  alignSelf: "flex-start",
+                  maxWidth: "100%",
+                },
+            primary ? styles.primary : undefined,
+            className.includes("plain")
+              ? {
+                  borderWidth: 0,
+                  backgroundColor: "transparent",
+                  alignSelf: "stretch",
+                }
+              : undefined,
+            pressed ? styles.pressed : undefined,
+            style,
+          ]) as ViewStyle
+        }
       >
         {complex ? (
           Children.map(children, (child) =>
@@ -102,7 +115,7 @@ export default function Link({
                 style={[
                   styles.text,
                   button || textLink ? styles.buttonText : undefined,
-                  textLink ? { color: colors.green } : undefined,
+                  textLink ? { color: colors.blue } : undefined,
                   primary ? styles.primaryText : undefined,
                 ]}
               >

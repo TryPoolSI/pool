@@ -2,7 +2,11 @@ import { expect, test } from "@playwright/test";
 import {
   account,
   addChild,
+  childAddDialog,
   childAddForm,
+  chooseSeat,
+  closeAction,
+  expectToast,
   family,
   openAction,
   submitSignIn,
@@ -26,6 +30,26 @@ async function storedChildren(page, familyId) {
   return response.json();
 }
 
+const childRow = (page, name) =>
+  page.getByRole("group", { name, exact: true });
+const seat = (scope, label) =>
+  scope
+    .getByRole("radiogroup", { name: "Seat", exact: true })
+    .getByRole("radio", { name: label, exact: true });
+const seatNames = {
+  standard: "Standard",
+  booster: "Booster",
+  "child-seat": "Child seat",
+};
+// Every sheet for a child starts from a blank name and a standard seat.
+async function expectBlankAddForm(page) {
+  await openAction(page, "Add a child");
+  const form = childAddForm(page);
+  await expect(form.getByLabel("Name", { exact: true })).toHaveValue("");
+  await expect(seat(form, "Standard")).toBeChecked();
+  await closeAction(page, "Add a child");
+}
+
 test("My family adds two children consecutively and edits each child in place", async ({
   browser,
 }) => {
@@ -33,8 +57,10 @@ test("My family adds two children consecutively and edits each child in place", 
   try {
     const dashboard = await family(page, "Child roster family", "Guardian");
     const familyId = new URL(dashboard).pathname.split("/").at(-1);
-    const form = childAddForm(page);
-    await expect(form.getByLabel("Child display name")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Add a child", exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText("Add a child to plan a ride.")).toBeVisible();
     await expect(
       page.getByRole("link", { name: "Children", exact: true }),
     ).toHaveCount(0);
@@ -50,48 +76,52 @@ test("My family adds two children consecutively and edits each child in place", 
       const requested = page.waitForRequest((request) =>
         rosterRead(new URL(request.url())),
       );
+      // The saved child shows before the roster has been read again.
       await addChild(page, "Zoe", "child-seat");
       await requested;
-      await expect(form.getByLabel("Child display name")).toHaveValue("");
-      await expect(form.getByLabel("Seat requirement")).toHaveValue("standard");
-      await expect(
-        page.getByRole("group", { name: "Zoe", exact: true }).getByText("Child seat"),
-      ).toBeVisible();
+      await expect(childRow(page, "Zoe").getByText("Child seat")).toBeVisible();
+      await expect(page.getByText("Add a child to plan a ride.")).toHaveCount(0);
+      await expectBlankAddForm(page);
     } finally {
       refresh.resolve();
     }
 
     await addChild(page, "Ari", "booster");
-    await expect(form.getByLabel("Child display name")).toHaveValue("");
-    await expect(form.getByLabel("Seat requirement")).toHaveValue("standard");
+    await expectBlankAddForm(page);
     await expect(page.getByRole("heading", { name: /^(Ari|Zoe)$/ })).toHaveText([
       "Ari",
       "Zoe",
     ]);
-    await expect(
-      page.getByRole("group", { name: "Ari", exact: true }).getByText("Booster seat"),
-    ).toBeVisible();
+    await expect(childRow(page, "Ari").getByText("Booster seat")).toBeVisible();
     const [ari, zoe] = await storedChildren(page, familyId);
     expect(ari.id).not.toBe(zoe.id);
 
-    for (const [child, name, seat, seatLabel] of [
-      [ari, "Ari updated", "standard", "Standard passenger seat"],
+    for (const [child, name, seatValue, seatLabel] of [
+      [ari, "Ari updated", "standard", "Standard seat"],
       [zoe, "Zoe updated", "booster", "Booster seat"],
     ]) {
-      await openAction(page, `Edit ${child.display_name}`);
-      const dialog = page.getByRole("dialog", { name: /^Edit / });
-      const displayName = dialog.getByLabel("Child display name");
-      const seatRequirement = dialog.getByLabel("Seat requirement");
+      const dialog = await openAction(
+        page,
+        `Edit ${child.display_name}`,
+        childRow(page, child.display_name).getByRole("button", {
+          name: "Edit",
+          exact: true,
+        }),
+      );
+      const displayName = dialog.getByLabel("Name", { exact: true });
       await expect(displayName).toHaveValue(child.display_name);
-      await expect(seatRequirement).toHaveValue(child.seat_requirement);
-      await displayName.fill(name);
-      await seatRequirement.selectOption(seat);
-      await dialog.getByRole("button", { name: "Update child" }).click();
-      await expect(dialog.getByRole("status")).toHaveText("Child updated");
-      await dialog.getByRole("button", { name: "Done", exact: true }).click();
       await expect(
-        page.getByRole("group", { name, exact: true }).getByText(seatLabel),
-      ).toBeVisible();
+        seat(dialog, seatNames[child.seat_requirement]),
+      ).toBeChecked();
+      await displayName.fill(name);
+      await chooseSeat(dialog, seatValue);
+      await dialog
+        .getByRole("button", { name: "Save changes", exact: true })
+        .click();
+      // A saved edit closes its sheet and confirms by name.
+      await expectToast(page, `${name} updated`);
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await expect(childRow(page, name).getByText(seatLabel)).toBeVisible();
     }
     expect(await storedChildren(page, familyId)).toEqual([
       { ...ari, display_name: "Ari updated", seat_requirement: "standard", revision: 2 },
@@ -99,9 +129,17 @@ test("My family adds two children consecutively and edits each child in place", 
     ]);
     await expect(page).toHaveURL(dashboard);
 
-    await openAction(page, "Edit Ari updated");
+    await openAction(
+      page,
+      "Edit Ari updated",
+      childRow(page, "Ari updated").getByRole("button", {
+        name: "Edit",
+        exact: true,
+      }),
+    );
+    // The sheet takes the child's latest name once the roster is read again.
     const dialog = page.getByRole("dialog", { name: /^Edit / });
-    const displayName = dialog.getByLabel("Child display name");
+    const displayName = dialog.getByLabel("Name", { exact: true });
     await displayName.fill("Guardian draft");
     const concurrentEdit = await authenticatedRpc(page, "save_own_child", {
       p_id: ari.id,
@@ -111,13 +149,23 @@ test("My family adds two children consecutively and edits each child in place", 
       p_revision: 2,
     });
     expect(concurrentEdit.ok()).toBe(true);
-    await dialog.getByRole("button", { name: "Update child" }).click();
-    await expect(dialog.getByRole("alert")).toContainText("details changed");
+    await dialog
+      .getByRole("button", { name: "Save changes", exact: true })
+      .click();
+    await expect(dialog.getByRole("alert")).toHaveText(
+      "Someone else just changed this child. Close this and open it again to see the latest.",
+    );
+    // A refused save keeps the sheet open with the draft, and shows no toast.
     await expect(displayName).toHaveValue("Guardian draft");
-    await dialog.getByRole("button", { name: "Done", exact: true }).click();
+    await expect(page.getByTestId("toast")).toHaveCount(0);
+    await dialog.getByRole("button", { name: /^Close Edit / }).click();
+    await expect(dialog).toHaveCount(0);
     await expect(
       page.getByRole("heading", { name: "Ari changed elsewhere", exact: true }),
     ).toBeVisible();
+    expect(
+      (await storedChildren(page, familyId)).map((child) => child.display_name),
+    ).toEqual(["Ari changed elsewhere", "Zoe updated"]);
   } finally {
     await context.close();
   }
@@ -130,9 +178,10 @@ test("retrying a committed child save after losing its response creates only one
   try {
     const dashboard = await family(page, "Child retry family", "Guardian");
     const familyId = new URL(dashboard).pathname.split("/").at(-1);
+    await openAction(page, "Add a child");
     const form = childAddForm(page);
-    await form.getByLabel("Child display name").fill("Retry child");
-    await form.getByLabel("Seat requirement").selectOption("booster");
+    await form.getByLabel("Name", { exact: true }).fill("Retry child");
+    await chooseSeat(form, "booster");
     const committed = Promise.withResolvers();
     await page.route(saveChildRpc, async (route) => {
       try {
@@ -145,23 +194,31 @@ test("retrying a committed child save after losing its response creates only one
         await route.abort("failed");
       }
     }, { times: 1 });
-    const save = form.getByRole("button", { name: "Save child", exact: true });
+    const save = form.getByRole("button", { name: "Add child", exact: true });
     const firstRequest = page.waitForRequest(saveChildRpc);
     await save.click();
     const original = (await firstRequest).postDataJSON();
     expect(await committed.promise).toBe(original.p_id);
-    await expect(form.getByRole("alert")).toContainText("Retry with the same details");
-    await expect(form.getByLabel("Child display name")).toHaveValue("Retry child");
-    await expect(form.getByLabel("Seat requirement")).toHaveValue("booster");
+    await expect(form.getByRole("alert")).toHaveText(
+      "That didn’t go through. Your entries are still here, so try again.",
+    );
+    // The sheet stays open with the draft; nothing claims the child was added.
+    await expect(childAddDialog(page)).toBeVisible();
+    await expect(page.getByTestId("toast")).toHaveCount(0);
+    await expect(form.getByLabel("Name", { exact: true })).toHaveValue(
+      "Retry child",
+    );
+    await expect(seat(form, "Booster")).toBeChecked();
 
     const retryRequest = page.waitForRequest(saveChildRpc);
     await save.click();
     expect((await retryRequest).postDataJSON()).toEqual(original);
-    await expect(form.getByRole("status")).toHaveText("Child added");
-    await expect(form.getByLabel("Child display name")).toHaveValue("");
+    await expectToast(page, "Retry child added");
+    await expect(childAddDialog(page)).toHaveCount(0);
     await expect(
       page.getByRole("heading", { name: "Retry child", exact: true }),
     ).toHaveCount(1);
+    await expectBlankAddForm(page);
     expect(await storedChildren(page, familyId)).toEqual([
       {
         id: original.p_id,
