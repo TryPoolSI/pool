@@ -1,25 +1,30 @@
+import { View } from "react-native";
 import * as UI from "@/ui/elements";
-import { colors } from "@/ui/styles";
+import { colors, spacing, styles } from "@/ui/styles";
 import { createPanel } from "@/ui/remote";
 import { createClient } from "@/lib/supabase/client";
 import Link from "@/ui/link";
-import { Avatar, Icon, RouteSummary, StatusBadge } from "./presentation";
-import { rideTimeShort, type RideOffer } from "@/lib/rides";
-import { coverageLabel, type DriverStatus } from "@/lib/drivers";
+import { Icon, StatusBadge } from "./presentation";
+import { rideClockRange, rideWhen, type RideOffer } from "@/lib/rides";
+import type { DriverStatus } from "@/lib/drivers";
+import { rideSummary, type RideSummary } from "@/lib/ride-state";
 
 async function loadRideList({
   offers,
   statuses = [],
+  showDate = true,
 }: {
   offers: RideOffer[];
   statuses?: DriverStatus[];
+  showDate?: boolean;
 }) {
   const unique = [
     ...new Map(offers.map((offer) => [offer.id, offer])).values(),
   ];
   const client = await createClient();
   const ids = unique.map((ride) => ride.id);
-  const [trips, handoffs] = await Promise.all([
+  const [session, trips, handoffs] = await Promise.all([
+    client.auth.getSession(),
     ids.length
       ? client
           .from("ride_trips")
@@ -27,18 +32,97 @@ async function loadRideList({
           .in("ride_id", ids)
       : { data: [], error: null },
     ids.length
-      ? client.from("ride_handoffs").select("ride_id,status").in("ride_id", ids)
+      ? client
+          .from("ride_handoffs")
+          .select("ride_id,status,recipient_id")
+          .in("ride_id", ids)
       : { data: [], error: null },
   ]);
   if (trips.error || handoffs.error)
-    throw new Error("Trip progress could not be loaded");
-  return { model: { offers, statuses, unique, trips, handoffs } };
+    throw new Error("Pool couldn’t load these rides. Try again.");
+  return {
+    model: {
+      statuses,
+      unique,
+      trips,
+      handoffs,
+      showDate,
+      me: session.data.session?.user.id,
+    },
+  };
+}
+
+// The one ride card. The whole card opens the ride. It answers, in order:
+// when, where, what state it is in, and who has to do something about it.
+export function RideCard({
+  ride,
+  summary,
+  showDate = true,
+  children,
+}: {
+  ride: Pick<
+    RideOffer,
+    | "id"
+    | "pickup_summary"
+    | "destination_summary"
+    | "starts_at"
+    | "ends_at"
+    | "timezone"
+    | "direction"
+  >;
+  summary: RideSummary;
+  showDate?: boolean;
+  // An inline action for this person (drive it, reply), under the card.
+  children?: React.ReactNode;
+}) {
+  const route = `${ride.pickup_summary} → ${ride.destination_summary}`;
+  const when = showDate
+    ? rideWhen(ride.starts_at, ride.ends_at, ride.timezone)
+    : rideClockRange(ride.starts_at, ride.ends_at, ride.timezone);
+  return (
+    <UI.ListItem>
+      <Link
+        href={`/app/rides/${ride.id}`}
+        aria-label={`${route}, ${when}, ${summary.label}. ${summary.detail}`}
+        style={{
+          flexDirection: "column",
+          alignItems: "stretch",
+          alignSelf: "stretch",
+          gap: spacing.xs,
+        }}
+      >
+        <View style={[styles.row, { justifyContent: "space-between" }]}>
+          <UI.Small style={{ color: colors.muted, flex: 1 }}>
+            {when}
+            {ride.direction === "return" ? " · Return" : ""}
+          </UI.Small>
+          <StatusBadge tone={summary.tone}>{summary.label}</StatusBadge>
+        </View>
+        <UI.Heading3 style={{ marginTop: 0, marginBottom: 0 }}>
+          {route}
+        </UI.Heading3>
+        <View style={[styles.row, { gap: spacing.sm }]}>
+          <UI.Small
+            style={{
+              flex: 1,
+              color: summary.mine ? colors.sunInk : colors.muted,
+              fontWeight: summary.mine ? "600" : "400",
+            }}
+          >
+            {summary.detail}
+          </UI.Small>
+          <Icon name="chevron-right" size={18} color={colors.muted} />
+        </View>
+      </Link>
+      {children && <UI.Box className="ride-card-bottom">{children}</UI.Box>}
+    </UI.ListItem>
+  );
 }
 
 export const RideList = createPanel(
   "loadRideList",
   loadRideList,
-  ({ offers, statuses, unique, trips, handoffs }) => (
+  ({ statuses, unique, trips, handoffs, showDate, me }) => (
     <UI.List className="ride-list">
       {unique.map((ride) => {
         const status = statuses.find((item) => item.ride_id === ride.id);
@@ -46,156 +130,24 @@ export const RideList = createPanel(
         const awaiting = handoffs.data.filter(
           (item) =>
             item.ride_id === ride.id && item.status === "awaiting_handoff",
-        ).length;
-        const hiddenCoverage = !status && ride.status !== "joined";
-        const label = ride.cancelled_at
-          ? "Cancelled"
-          : trip?.completed_at
-            ? "Ride completed"
-            : awaiting
-              ? "Guardian receipt needed"
-              : trip
-                ? "Trip in progress"
-                : hiddenCoverage
-                  ? "Private ride summary"
-                  : status?.coverage === "confirmed"
-                    ? "Driver confirmed"
-                    : status?.coverage === "awaiting_confirmation"
-                      ? status.accepted_at
-                        ? coverageLabel(status.coverage, status.accepted_at)
-                        : "Driver not confirmed"
-                      : "Needs a driver";
-        const tone =
-          ride.cancelled_at || hiddenCoverage
-            ? "neutral"
-            : trip?.completed_at
-              ? "positive"
-              : awaiting || (!trip && status?.coverage !== "confirmed")
-                ? "attention"
-                : "positive";
-        const day = new Date(ride.starts_at);
-        const date = new Intl.DateTimeFormat("en", {
-          day: "numeric",
-          timeZone: ride.timezone,
-        }).format(day);
-        const weekday = new Intl.DateTimeFormat("en", {
-          weekday: "short",
-          timeZone: ride.timezone,
-        }).format(day);
-        const driver =
-          !ride.cancelled_at &&
-          (status?.coverage === "confirmed" || trip?.completed_at)
-            ? status?.current_driver_name || status?.driver_name
-            : null;
-        const pending =
-          !ride.cancelled_at && status?.proposal_status === "pending";
+        );
         return (
-          <UI.ListItem key={ride.id}>
-            <UI.Box className="ride-card-top">
-              <UI.Box className="ride-card-heading">
-                <UI.Box className="ride-date" aria-hidden="true">
-                  <UI.Inline>{weekday}</UI.Inline>
-                  <UI.Strong>{date}</UI.Strong>
-                </UI.Box>
-                <UI.Box className="ride-card-times">
-                  <Link href={`/app/rides/${ride.id}`}>
-                    {ride.pickup_summary} → {ride.destination_summary}
-                  </Link>
-                  <UI.Small>
-                    {ride.direction === "return" ? "Return" : "Outbound"} ·
-                    Pickup: {rideTimeShort(ride.starts_at, ride.timezone)}
-                  </UI.Small>
-                  <UI.Small>
-                    Drop-off: {rideTimeShort(ride.ends_at, ride.timezone)}
-                  </UI.Small>
-                </UI.Box>
-              </UI.Box>
-              <StatusBadge tone={tone}>{label}</StatusBadge>
-            </UI.Box>
-            <RouteSummary
-              pickup={ride.pickup_summary}
-              destination={ride.destination_summary}
-            />
-            <UI.Box className="ride-card-note">
-              {pending && (
-                <>
-                  <UI.Paragraph>
-                    {status.mode === "initial"
-                      ? "Driver proposal"
-                      : "Replacement review"}
-                    : {status.driver_name} ·{" "}
-                    {status.accepted_at
-                      ? "Driver accepted"
-                      : "Driver reply needed"}{" "}
-                    · {status.rider_count - status.consent_count} child consents
-                    needed
-                    {status.mode !== "initial" &&
-                      (status.coverage === "confirmed"
-                        ? " · Original driver remains assigned"
-                        : " · Uncovered until replacement confirms")}
-                  </UI.Paragraph>
-                  <UI.Paragraph>
-                    Reply by {rideTimeShort(status.deadline, status.timezone)}
-                  </UI.Paragraph>
-                </>
-              )}
-              {pending && status.coverage !== "confirmed" && (
-                <UI.Paragraph>
-                  Uncovered until driver acceptance and every child’s consent.
-                </UI.Paragraph>
-              )}
-              {!!awaiting && (
-                <UI.Paragraph>
-                  {awaiting} awaiting explicit guardian receipt.
-                </UI.Paragraph>
-              )}
-              {hiddenCoverage && (
-                <UI.Paragraph>Join to view driver status.</UI.Paragraph>
-              )}
-              {offers.some(
-                (offer) => offer.id === ride.id && offer.status !== "joined",
-              ) && (
-                <UI.Paragraph>
-                  Your family:{" "}
-                  {[
-                    ...new Set(
-                      offers
-                        .filter((offer) => offer.id === ride.id)
-                        .map((offer) => offer.status),
-                    ),
-                  ].join(", ")}
-                </UI.Paragraph>
-              )}
-            </UI.Box>
-            <UI.Box className="ride-card-bottom">
-              <UI.Box className="ride-card-driver">
-                {driver ? (
-                  <Avatar name={driver} />
-                ) : (
-                  <UI.Box className="team-icon">
-                    <Icon name="car" />
-                  </UI.Box>
-                )}
-                <UI.Inline>
-                  {driver
-                    ? `${trip?.completed_at ? "Trip driver" : "Driver"}: ${driver}`
-                    : hiddenCoverage
-                      ? "Private driver details"
-                      : ride.cancelled_at
-                        ? "Ride cancelled"
-                        : "No confirmed driver"}
-                </UI.Inline>
-              </UI.Box>
-              <Link
-                className="text-link"
-                href={`/app/rides/${ride.id}`}
-                style={{ alignSelf: "center" }}
-              >
-                View ride
-                <Icon name="arrow-right" size={16} color={colors.green} />
-              </Link>
-            </UI.Box>
-          </UI.ListItem>
+          <RideCard
+            key={ride.id}
+            ride={ride}
+            showDate={showDate}
+            summary={rideSummary({
+              familyStatus: ride.status,
+              cancelled: Boolean(ride.cancelled_at),
+              status,
+              started: Boolean(trip),
+              completed: Boolean(trip?.completed_at),
+              awaitingReceipts: awaiting.length,
+              // The same "your move" badge this ride wears on Today.
+              myReceipts: awaiting.filter((item) => item.recipient_id === me)
+                .length,
+            })}
+          />
         );
       })}
     </UI.List>

@@ -92,7 +92,7 @@ test("all trip actions authenticate; submitted actor, time, status and prior res
     },
   ]);
 });
-test("receipt always needs explicit acknowledgment; invalid inputs stop before any RPC", async () => {
+test("every trip action needs the confirm field its form sends; invalid inputs stop before any RPC", async () => {
   for (const command of commands)
     for (const changes of [
       { confirm: "" },
@@ -130,12 +130,12 @@ test("receipt always needs explicit acknowledgment; invalid inputs stop before a
 test("authority, stale progress, unmet start conditions and frozen trips remain errors in every server action", async () => {
   for (const command of commands)
     for (const [code, pattern] of [
-      ["PT404", /unavailable/],
-      ["PT409", /Reload/],
-      ["PT422", /recipient/],
-      ["PT423", /frozen/],
-      ["PT424", /unfinished/],
-      ["XX000", /could not save/],
+      ["PT404", /isn.t yours to confirm/],
+      ["PT409", /Someone else just updated this trip/],
+      ["PT422", /Pickup can.t start yet/],
+      ["PT423", /has started, so it can.t be changed/],
+      ["PT424", /unfinished trip/],
+      ["XX000", /didn.t go through\. Check your connection/],
     ]) {
       rpc.mock.mockImplementation(async () => ({
         data: null,
@@ -143,6 +143,8 @@ test("authority, stale progress, unmet start conditions and frozen trips remain 
       }));
       const r = await handoffAction({}, form({ ...fields, command }));
       assert.match(r.error, pattern);
+      assert.doesNotMatch(r.error, /private database information/);
       assert.equal(r.message, undefined);
+      assert.equal(r.path, undefined);
     }
 });

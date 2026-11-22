@@ -9,17 +9,14 @@ export function FamilyMembershipStatus({
   if (membership.isError)
     return (
       <>
-        <UI.Paragraph role="alert">{membership.error.message}</UI.Paragraph>
+        <UI.Paragraph role="alert">
+          Pool couldn’t load your family. Check your connection and try again.
+        </UI.Paragraph>
         <UI.Button onPress={() => void membership.refetch()}>
-          Retry membership
+          Try again
         </UI.Button>
       </>
     );
-  if (membership.isFetching || membership.isPending)
-    return (
-      <UI.Paragraph role="status">
-        Checking your family membership…
-      </UI.Paragraph>
-    );
+  if (membership.isFetching || membership.isPending) return <UI.Loading />;
   return null;
 }

@@ -7,7 +7,7 @@ export default function Recovery() {
     <>
       <UI.Heading1>Reset your password</UI.Heading1>
       <UI.Paragraph>
-        We will email you a link to choose a new password.
+        Enter your email and Pool will send a link to choose a new password.
       </UI.Paragraph>
       <AuthForm mode="recovery" />
       <Link href="/sign-in">Back to sign in</Link>

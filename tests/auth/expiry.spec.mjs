@@ -20,9 +20,11 @@ test("an actually expired signed token with an invalid refresh token cannot reta
     });
     await person.page.reload();
     await expect(person.page).toHaveURL(/sign-in/);
+    // Neither the welcome screen nor the profile may render behind the redirect.
     await expect(
-      person.page.getByRole("heading", { name: "Profile" }),
+      person.page.getByRole("heading", { name: /^(Welcome to Pool|Profile)$/ }),
     ).toHaveCount(0);
+    await expect(person.page.getByRole("main")).toHaveCount(0);
   } finally {
     await person.context.close();
   }

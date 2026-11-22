@@ -14,12 +14,16 @@ export function Disclosure({
   const [expanded, setExpanded] = useState(open);
   return (
     <View
-      style={{ borderTopWidth: 1, borderColor: colors.line, marginTop: 18 }}
+      style={{
+        borderTopWidth: 1,
+        borderColor: colors.line,
+        marginTop: spacing.lg,
+      }}
     >
       <Pressable
         testID="disclosure-toggle"
         accessibilityRole="button"
-        accessibilityLabel={`${title} details`}
+        accessibilityLabel={title}
         aria-expanded={expanded}
         accessibilityState={{ expanded }}
         onPress={() => setExpanded(!expanded)}
@@ -35,19 +39,21 @@ export function Disclosure({
         <Text
           style={[
             styles.text,
-            { fontSize: 13, fontWeight: "600", color: colors.green },
+            { fontSize: 15, fontWeight: "600", color: colors.blue },
           ]}
         >
           {title}
         </Text>
         <Icon
           name={expanded ? "chevron-up" : "chevron-down"}
-          size={16}
-          color={colors.green}
+          size={18}
+          color={colors.blue}
         />
       </Pressable>
       {expanded && (
-        <View style={{ paddingBottom: 12, gap: 8 }}>{children}</View>
+        <View style={{ paddingBottom: spacing.md, gap: spacing.sm }}>
+          {children}
+        </View>
       )}
     </View>
   );

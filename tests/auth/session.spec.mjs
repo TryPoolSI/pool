@@ -13,10 +13,20 @@ async function signIn(page, email, next = "/app", value = password) {
   await page.goto(`/sign-in?next=${encodeURIComponent(next)}`);
   await submitSignIn(page, email, value);
 }
+// A signed-in adult without a family lands on the welcome screen.
+const welcome = (page) =>
+  page.getByRole("heading", { level: 1, name: "Welcome to Pool" });
 async function signOut(page) {
   await page.getByRole("button", { name: "Account", exact: true }).click();
-  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: "Account", exact: true })
+    .getByRole("button", { name: "Sign out", exact: true })
+    .click();
   await expect(page).toHaveURL(/signed-out/);
+  // A toast from the last action may still be fading on the sign-in screen.
+  await expect(
+    page.getByRole("status").filter({ hasText: "You’re signed out." }),
+  ).toBeVisible();
 }
 async function requestRecovery(page, email) {
   await page.goto("/forgot-password");
@@ -47,18 +57,23 @@ test("real signup, separate sessions, token rotation, safe return paths and loca
     const stale = await session(one.page);
     await replaceSession(one.page, { ...stale, expires_at: 1 });
     await one.page.reload();
-    await expect(
-      one.page.getByRole("heading", { name: "Profile" }),
-    ).toBeVisible();
+    await expect(welcome(one.page)).toBeVisible();
     const renewed = await session(one.page);
     expect(renewed.expires_at).toBeGreaterThan(Date.now() / 1000);
     expect(renewed.refresh_token).not.toBe(stale.refresh_token);
     await one.page
       .getByRole("button", { name: "Account", exact: true })
       .click();
-    await expect(one.page.getByText(one.email, { exact: true })).toBeVisible();
+    const accountSheet = one.page.getByRole("dialog", {
+      name: "Account",
+      exact: true,
+    });
+    await expect(accountSheet.getByText(one.email, { exact: true })).toBeVisible();
     await expect(one.page.getByText(two.email, { exact: true })).toHaveCount(0);
-    await one.page.getByRole("button", { name: "Done", exact: true }).click();
+    await accountSheet
+      .getByRole("button", { name: "Close Account", exact: true })
+      .click();
+    await expect(accountSheet).toHaveCount(0);
     const shell = await one.context.request.get("/app");
     expect(shell.headers()["cache-control"]).toContain("no-store");
     expect(await shell.text()).not.toContain(one.email);
@@ -67,9 +82,7 @@ test("real signup, separate sessions, token rotation, safe return paths and loca
     await one.page.goto("/app");
     await expect(one.page).toHaveURL(/sign-in/);
     await two.page.reload();
-    await expect(
-      two.page.getByRole("heading", { name: "Profile" }),
-    ).toBeVisible();
+    await expect(welcome(two.page)).toBeVisible();
     await signIn(one.page, one.email);
     await expect(one.page).toHaveURL(/\/app\/profile$/);
     await family(one.page, "Session family", "Returning adult");
@@ -129,7 +142,7 @@ for (const browserState of ["signed out", "signed in as another account"]) {
       await page.getByRole("button", { name: "Save new password" }).click();
       await expect(page).toHaveURL(/\/sign-in\?message=password-updated$/);
       await expect(page.getByRole("status")).toHaveText(
-        "Your password has been updated. Sign in with your new password.",
+        "Password saved. Sign in with your new password.",
       );
       expect(await session(page)).toBeNull();
 
@@ -139,7 +152,9 @@ for (const browserState of ["signed out", "signed in as another account"]) {
         await signOut(page);
       }
       await signIn(page, person.email);
-      await expect(page.getByRole("alert")).toContainText("Unable to sign in");
+      await expect(page.getByRole("alert")).toContainText(
+        "That email and password didn’t work.",
+      );
       await signIn(page, person.email, "/app", newPassword);
       await expect(page).toHaveURL(/\/app\/profile$/);
 

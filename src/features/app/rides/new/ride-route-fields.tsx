@@ -7,7 +7,7 @@ import {
 } from "@/services/saved-routes";
 import { CommandForm } from "@/ui/command-form";
 import * as UI from "@/ui/elements";
-import { ActionDialog } from "../../presentation";
+import { ActionDialog, Disclosure } from "../../presentation";
 
 // Hidden for live demos; set EXPO_PUBLIC_SHOW_SAVE_ROUTE=true to show it.
 const showSaveRoute = process.env.EXPO_PUBLIC_SHOW_SAVE_ROUTE === "true";
@@ -26,17 +26,19 @@ function SaveRouteForm({
   familyId: string;
   locations: RouteLocations;
 }) {
-  const [saved, setSaved] = useState(false);
   const [requestId] = useState(newRequestId);
   return (
     <CommandForm
       label="Save route"
       fields={{ family_id: familyId, request_id: requestId }}
-      action={(fields) => saveRoute({ ...fields, ...locations })}
-      disabled={saved}
-      onResult={(result) => {
-        if (!result.error) setSaved(true);
-      }}
+      action={(fields) =>
+        saveRoute({
+          ...fields,
+          ...locations,
+          pickup: locations.pickup || locations.pickup_summary,
+          destination: locations.destination || locations.destination_summary,
+        })
+      }
     >
       <UI.Label>
         Route name
@@ -44,7 +46,7 @@ function SaveRouteForm({
           name="route_name"
           required
           maxLength={80}
-          placeholder="School → Soccer"
+          placeholder="School to soccer"
         />
       </UI.Label>
     </CommandForm>
@@ -70,13 +72,16 @@ export function RideRouteFields({ familyId }: { familyId: string }) {
     setLocations({ pickup_summary, destination_summary, pickup, destination });
     setSelectedRoute(id);
   }
+  const canSave = Boolean(
+    locations.pickup_summary.trim() && locations.destination_summary.trim(),
+  );
 
   return (
     <UI.Box className="form-section">
-      <UI.Heading2>Route</UI.Heading2>
+      <UI.Heading2>Where</UI.Heading2>
       {savedRoutes.length > 0 && (
         <UI.Label>
-          Use a saved route
+          Saved route
           <UI.Select
             name="saved_route"
             value={selectedRoute}
@@ -93,82 +98,80 @@ export function RideRouteFields({ familyId }: { familyId: string }) {
           </UI.Select>
         </UI.Label>
       )}
-      {routes.isError && (
-        <UI.Box>
-          <UI.Paragraph role="alert">
-            Saved routes could not be loaded.
-          </UI.Paragraph>
-          <UI.Button onPress={() => void routes.refetch()}>
-            Retry saved routes
-          </UI.Button>
-        </UI.Box>
-      )}
       <UI.Label>
-        Travel direction
-        <UI.Select name="direction" required>
-          <UI.Option value="outbound">Outbound</UI.Option>
-          <UI.Option value="return">Return</UI.Option>
-        </UI.Select>
+        From
+        <UI.Field
+          name="pickup_summary"
+          value={locations.pickup_summary}
+          onChange={({ target }) =>
+            updateLocation("pickup_summary", target.value)
+          }
+          required
+          maxLength={80}
+          placeholder="Maple Street corner"
+        />
+      </UI.Label>
+      <UI.Label>
+        To
+        <UI.Field
+          name="destination_summary"
+          value={locations.destination_summary}
+          onChange={({ target }) =>
+            updateLocation("destination_summary", target.value)
+          }
+          required
+          maxLength={80}
+          placeholder="Lincoln Elementary"
+        />
       </UI.Label>
       <UI.Paragraph>
-        Use general place names in the summaries. Invited families can see them
-        before joining.
+        Use place names. Invited families see these before they join.
       </UI.Paragraph>
-      <UI.Box className="form-pair">
+      <UI.Label>
+        Direction
+        <UI.Choice
+          name="direction"
+          options={[
+            { value: "outbound", label: "Outbound" },
+            { value: "return", label: "Return" },
+          ]}
+        />
+      </UI.Label>
+      {/* Registered even while the disclosure is closed, so typed addresses
+          are never dropped. Empty means "same as the place name". */}
+      <UI.Field type="hidden" name="pickup" value={locations.pickup} />
+      <UI.Field type="hidden" name="destination" value={locations.destination} />
+      <Disclosure title="Add exact addresses">
+        <UI.Paragraph>
+          Optional. Only families on the ride and the driver see these.
+        </UI.Paragraph>
         <UI.Label>
-          Pickup summary
+          Pickup address
           <UI.Field
-            name="pickup_summary"
-            value={locations.pickup_summary}
-            onChange={({ target }) =>
-              updateLocation("pickup_summary", target.value)
-            }
-            required
-            maxLength={80}
-            placeholder="Neighborhood meeting area"
-          />
-        </UI.Label>
-        <UI.Label>
-          Drop-off summary
-          <UI.Field
-            name="destination_summary"
-            value={locations.destination_summary}
-            onChange={({ target }) =>
-              updateLocation("destination_summary", target.value)
-            }
-            required
-            maxLength={80}
-            placeholder="Activity area"
-          />
-        </UI.Label>
-      </UI.Box>
-      <UI.Paragraph>
-        Exact locations stay with participating families and the confirmed driver.
-      </UI.Paragraph>
-      <UI.Box className="form-pair">
-        <UI.Label>
-          Exact pickup
-          <UI.Field
-            name="pickup"
             value={locations.pickup}
             onChange={({ target }) => updateLocation("pickup", target.value)}
-            required
             maxLength={300}
+            autoComplete="off"
           />
         </UI.Label>
         <UI.Label>
-          Exact drop-off
+          Drop-off address
           <UI.Field
-            name="destination"
             value={locations.destination}
-            onChange={({ target }) => updateLocation("destination", target.value)}
-            required
+            onChange={({ target }) =>
+              updateLocation("destination", target.value)
+            }
             maxLength={300}
+            autoComplete="off"
           />
         </UI.Label>
-      </UI.Box>
-      {showSaveRoute ? (
-        <ActionDialog title="Save route" triggerStyle={{ alignSelf: "flex-start" }}>
+      </Disclosure>
+      {showSaveRoute && canSave ? (
+        <ActionDialog
+          title="Save this route"
+          tone="quiet"
+          triggerStyle={{ paddingHorizontal: 0, alignSelf: "flex-start" }}
+        >
           <SaveRouteForm familyId={familyId} locations={locations} />
         </ActionDialog>
       ) : null}

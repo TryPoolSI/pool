@@ -3,9 +3,9 @@ appId: dev.pool.prototype
 - launchApp:
     clearState: true
     clearKeychain: true
+# The signed-out front door (src/app/index.tsx).
 - extendedWaitUntil:
-    visible:
-      id: brand
+    visible: Share the driving
     timeout: 60000
 - openLink: pool:///sign-up
 - tapOn:
@@ -22,8 +22,7 @@ appId: dev.pool.prototype
 - stopApp
 - launchApp
 - extendedWaitUntil:
-    visible:
-      id: brand
+    visible: Share the driving
     timeout: 60000
 - openLink: pool:///sign-in
 - tapOn:

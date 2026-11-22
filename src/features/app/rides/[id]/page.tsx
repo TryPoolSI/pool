@@ -1,7 +1,11 @@
+import { Fragment } from "react";
+import { View, useWindowDimensions } from "react-native";
 import * as UI from "@/ui/elements";
 import { createScreen } from "@/ui/remote";
 import Link from "@/ui/link";
+import { colors, spacing, styles } from "@/ui/styles";
 import {
+  ActionDialog,
   PageHeading,
   StatusBadge,
   RouteSummary,
@@ -9,15 +13,48 @@ import {
 } from "../../presentation";
 import { notFound } from "@/lib/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { rideTime } from "@/lib/rides";
-import { RideForm, ChildChoices } from "../../ride-form";
-import { DriverForm, Confirmation } from "../../driver-form";
-import { RideDriverNomination } from "../../ride-vehicles";
+import { rideTimeShort, rideWhen } from "@/lib/rides";
+import { rideSummary } from "@/lib/ride-state";
+import { RideForm, ChildChoices, AddChildSheet } from "../../ride-form";
+import { AddVehicleForm, DriverForm } from "../../driver-form";
+import { AskDriverForm } from "../../ride-vehicles";
 import { HandoffPanel } from "../../handoff-panel";
-import { DriverPanel } from "../../driver-panel";
+import { HomeDriverOffer, type OfferCar } from "../../home-driver-offer";
+import {
+  DriverMore,
+  DriverReply,
+  DriverSummary,
+  driverOptions,
+  driverRequestLine,
+  loadAssignedVehicle,
+} from "../../driver-panel";
 import { ReplacementPanel } from "../../replacement-panel";
-import { coverageLabel } from "@/lib/drivers";
-import { familyPath } from "@/services/active-family";
+
+const plain = { marginVertical: 0 } as const;
+const cardTitle = { marginBottom: 0 } as const;
+const stack = { gap: spacing.md } as const;
+const firstName = (name: string) => name.trim().split(/\s+/)[0] || name;
+const listed = (names: string[]) =>
+  names.length < 3
+    ? names.join(" and ")
+    : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+// "The Chens" reads as "the Chens" in the middle of a sentence.
+const midSentence = (name: string) => name.replace(/^The /, "the ");
+const seatWords = (seat: string) =>
+  seat === "booster"
+    ? "Booster"
+    : seat === "child-seat"
+      ? "Child seat"
+      : "Regular seat";
+const replyWords = (reply: string) =>
+  reply === "invited"
+    ? "Hasn’t replied"
+    : reply === "declined"
+      ? "Declined"
+      : reply === "joined"
+        ? ""
+        : "Not riding";
+
 async function loadRideDetail({
   params,
   searchParams,
@@ -30,27 +67,42 @@ async function loadRideDetail({
   const query = await searchParams;
   const client = await createClient();
   const offers = await client.rpc("ride_offer", { p_id: id });
-  if (offers.error) throw new Error("Ride could not be loaded");
+  if (offers.error) throw new Error("Pool couldn’t load this ride. Try again.");
   const offer =
     offers.data.find((item) => item.family_id === query.family) ??
     (!query.family ? offers.data[0] : undefined);
   const driving = await client.rpc("driver_status", { p_ride_id: id });
-  if (driving.error) throw new Error("Driver status could not be loaded");
+  if (driving.error)
+    throw new Error("Pool couldn’t load this ride’s driver. Try again.");
   const status = driving.data[0];
-  const trip = await client
-    .from("ride_trips")
-    .select("completed_at")
-    .eq("ride_id", id)
-    .maybeSingle();
-  if (trip.error) throw new Error("Trip could not be loaded");
-  const frozen = Boolean(trip.data);
+  const [trip, handoffs] = await Promise.all([
+    client
+      .from("ride_trips")
+      .select("completed_at")
+      .eq("ride_id", id)
+      .maybeSingle(),
+    client
+      .from("ride_handoffs")
+      .select("status,recipient_id")
+      .eq("ride_id", id),
+  ]);
+  if (trip.error || handoffs.error)
+    throw new Error("Pool couldn’t load this ride. Try again.");
+  const started = Boolean(trip.data);
+  const completed = Boolean(trip.data?.completed_at);
+  const awaitingReceipts = handoffs.data.filter(
+    (item) => item.status === "awaiting_handoff",
+  ).length;
+  const now = Date.now();
+
+  // A driver from outside the riding families sees the ride through the request.
   if (
     !offer &&
     (status?.is_driver ||
       status?.is_current_driver ||
       status?.is_completed_driver)
   ) {
-    const [exact, enrolled] = await Promise.all([
+    const [exact, enrolled, assignedVehicle] = await Promise.all([
       client
         .from("ride_locations")
         .select("pickup,destination")
@@ -59,68 +111,128 @@ async function loadRideDetail({
       client
         .from("ride_riders")
         .select("child_id,display_name,seat_requirement")
-        .eq("ride_id", id),
+        .eq("ride_id", id)
+        .order("display_name"),
+      loadAssignedVehicle(client, status),
     ]);
     if (exact.error || enrolled.error)
-      throw new Error("Assignment could not be loaded");
-    const progress = exact.data && (
-      <HandoffPanel
-        rideId={id}
-        revision={status.ride_revision}
-        timezone={status.timezone}
-        isDriver={status.is_current_driver}
-        cancelled={Boolean(status.cancelled_at)}
-      />
+      throw new Error("Pool couldn’t load this ride. Try again.");
+    const summary = rideSummary({
+      cancelled: Boolean(status.cancelled_at),
+      status,
+      started,
+      completed,
+      awaitingReceipts,
+    });
+    const asked =
+      status.proposal_status === "pending" &&
+      !status.accepted_at &&
+      status.is_driver &&
+      !status.cancelled_at &&
+      !started;
+    const more = driverOptions(status, {
+      started,
+      upcoming: Date.parse(status.starts_at) > now,
+      assignedVehicle,
+    });
+    // On the day, the trip's own steps lead.
+    const underway = started && !completed;
+    const { tripCard, card } = tripFirst(underway);
+    const trip = tripCard(
+      exact.data && (
+        <HandoffPanel
+          rideId={id}
+          revision={status.ride_revision}
+          timezone={status.timezone}
+          isDriver={status.is_current_driver}
+          cancelled={Boolean(status.cancelled_at)}
+        />
+      ),
     );
+    const cards = [
+      card(
+        "driver",
+        !status.cancelled_at && (
+          <UI.Section>
+            <View style={stack}>
+              <UI.Heading2 style={cardTitle}>Driver</UI.Heading2>
+              <DriverSummary
+                status={status}
+                completed={completed}
+                assignedVehicle={assignedVehicle}
+              />
+            </View>
+          </UI.Section>
+        ),
+      ),
+      card(
+        "riders",
+        exact.data && enrolled.data.length > 0 && (
+          <UI.Section>
+            <UI.Heading2>Riders</UI.Heading2>
+            {enrolled.data.map((rider) => (
+              <RiderRow
+                key={rider.child_id}
+                name={rider.display_name}
+                seat={rider.seat_requirement}
+              />
+            ))}
+          </UI.Section>
+        ),
+      ),
+      card(
+        "where",
+        <UI.Section>
+          <UI.Heading2 style={cardTitle}>Where</UI.Heading2>
+          <RouteSummary
+            pickup={exact.data?.pickup ?? status.pickup_summary}
+            destination={exact.data?.destination ?? status.destination_summary}
+          />
+          {!exact.data && (
+            <UI.Paragraph style={plain}>
+              You’ll see the addresses and who’s riding once you’re the driver.
+            </UI.Paragraph>
+          )}
+        </UI.Section>,
+      ),
+    ];
     return {
       early: (
         <>
           <PageHeading
             title={`${status.pickup_summary} → ${status.destination_summary}`}
+            action={
+              <StatusBadge tone={summary.tone}>{summary.label}</StatusBadge>
+            }
           >
-            You’re driving this ride
+            {rideWhen(status.starts_at, status.ends_at, status.timezone)}
           </PageHeading>
-          <UI.Box className="ride-time">
-            <UI.Paragraph>
-              Pickup: {rideTime(status.starts_at, status.timezone)}
-            </UI.Paragraph>
-            <UI.Paragraph>
-              Drop-off: {rideTime(status.ends_at, status.timezone)}
-            </UI.Paragraph>
-          </UI.Box>
-          {(status.coverage === "confirmed" || trip.data?.completed_at) && (
-            <UI.Paragraph className="ride-current-driver">
-              {trip.data?.completed_at ? "Trip driver" : "Current driver"} ·{" "}
-              {status.current_driver_name || status.driver_name}
+          {asked ? (
+            <NextStep
+              title={
+                status.coverage === "confirmed"
+                  ? "Can you take over driving?"
+                  : "Can you drive this ride?"
+              }
+            >
+              <UI.Paragraph style={plain}>
+                {driverRequestLine(status)}
+              </UI.Paragraph>
+              <DriverReply status={status} />
+            </NextStep>
+          ) : (
+            <UI.Paragraph style={{ marginTop: 0 }}>
+              {summary.detail}
             </UI.Paragraph>
           )}
-          <UI.Box className="ride-overview">
-            <UI.Section className="panel">
-              <UI.Heading2>Pickup and destination</UI.Heading2>
-              {exact.data ? (
-                <RouteSummary
-                  pickup={exact.data.pickup}
-                  destination={exact.data.destination}
-                />
-              ) : (
-                <UI.Paragraph>
-                  Only the minimal driver proposal is available. Exact private
-                  locations become available after confirmation.
-                </UI.Paragraph>
-              )}
-            </UI.Section>
-            <DriverPanel status={status} showLink={false} />
-          </UI.Box>
-          {progress}
-          {exact.data && (
-            <Disclosure title="Enrolled riders">
-              <UI.List>
-                {enrolled.data.map((c) => (
-                  <UI.ListItem key={c.child_id}>
-                    {c.display_name} · {c.seat_requirement}
-                  </UI.ListItem>
-                ))}
-              </UI.List>
+          {underway ? [trip, ...cards] : [...cards, trip]}
+          {(more.changeCar || more.stepBack) && (
+            <Disclosure title="More">
+              <DriverMore
+                status={status}
+                options={more}
+                assignedVehicle={assignedVehicle}
+              />
             </Disclosure>
           )}
         </>
@@ -133,13 +245,17 @@ async function loadRideDetail({
         <>
           <UI.Heading1>Ride unavailable</UI.Heading1>
           <UI.Paragraph>
-            This ride is unavailable to this account or your family is no longer
-            in its circle.
+            You can’t open this ride. It may have been removed, or your family
+            is no longer in its circle.
           </UI.Paragraph>
+          <Link className="text-link" href="/app/schedule">
+            Go to the schedule
+          </Link>
         </>
       ),
     };
   const [
+    session,
     families,
     children,
     locations,
@@ -147,9 +263,10 @@ async function loadRideDetail({
     participation,
     roster,
     options,
-    consents,
-    assignment,
+    offerDetails,
+    vehicles,
   ] = await Promise.all([
+    client.auth.getSession(),
     client.from("families").select("id,name"),
     client
       .from("children")
@@ -164,27 +281,19 @@ async function loadRideDetail({
     client
       .from("ride_riders")
       .select("family_id,child_id,display_name,seat_requirement")
-      .eq("ride_id", id),
+      .eq("ride_id", id)
+      .order("display_name"),
     client.from("ride_families").select("family_id,status").eq("ride_id", id),
     client.rpc("circle_roster", { p_circle_id: offer.circle_id }),
     client.rpc("driver_options", { p_ride_id: id }),
+    client.rpc("drive_offer_details", { p_ride_ids: [id] }),
     client
-      .from("ride_driver_consents")
-      .select("child_id,revoked_at")
-      .eq("ride_id", id)
-      .eq("family_id", offer.family_id)
-      .eq(
-        "proposal_id",
-        status?.proposal_id ?? "00000000-0000-0000-0000-000000000000",
-      ),
-    status?.coverage === "confirmed" &&
-    status.current_proposal_id !== status.proposal_id
-      ? client
-          .from("driver_assignments")
-          .select("driver_id,vehicle_id")
-          .eq("id", status.current_assignment_id)
-          .maybeSingle()
-      : Promise.resolve({ data: null, error: null }),
+      .from("vehicles")
+      .select("id,label,version,passenger_seats")
+      .is("retired_at", null)
+      .order("passenger_seats", { ascending: false })
+      .order("label")
+      .order("id"),
   ]);
   if (
     families.error ||
@@ -194,84 +303,158 @@ async function loadRideDetail({
     participation.error ||
     roster.error ||
     options.error ||
-    consents.error ||
-    assignment.error
+    vehicles.error ||
+    // The ride still loads before the database can say who may offer to drive.
+    (offerDetails.error && offerDetails.error.code !== "PGRST202")
   )
-    throw new Error("Ride details could not be loaded");
-  const locked =
-    frozen ||
-    status?.coverage === "confirmed" ||
-    status?.coverage === "awaiting_confirmation";
-  const fields = {
-    ride_id: id,
-    family_id: offer.family_id,
-    revision: String(offer.revision),
-  };
-  const familyName = (familyId: string) =>
-    families.data.find((f) => f.id === familyId)?.name ??
-    roster.data.find((f) => f.family_id === familyId)?.family_name ??
-    "Invited circle family";
-  const visibleCoverage =
-    !status && offer.status !== "joined"
-      ? "Join with your family to view driver status"
-      : coverageLabel(status?.coverage);
-  const currentDriver =
-    status?.coverage === "confirmed" || trip.data?.completed_at
-      ? status?.current_driver_name || status?.driver_name
-      : null;
-  const assignedOption = options.data.find(
-    (option) => option.vehicle_id === assignment.data?.vehicle_id,
-  );
-  const driverPanel = status && (
-    <DriverPanel
-      status={status}
-      showLink={false}
-      assignedVehicle={assignedOption && {
-        id: assignedOption.vehicle_id,
-        label: assignedOption.vehicle_label,
-        driverId: assignedOption.driver_id,
-      }}
-    />
-  );
-  const handoffs = locations.data && (
-    <HandoffPanel
-      rideId={id}
-      revision={offer.revision}
-      timezone={offer.timezone}
-      isDriver={Boolean(status?.is_current_driver)}
-      cancelled={Boolean(offer.cancelled_at)}
-    />
-  );
-  const ownRiders = riders.data.filter((r) => r.family_id === offer.family_id);
-  const needsConsent = ownRiders.some(
-    (r) =>
-      !consents.data.some((c) => c.child_id === r.child_id && !c.revoked_at),
-  );
+    throw new Error("Pool couldn’t load this ride. Try again.");
+  const assignedVehicle = status
+    ? await loadAssignedVehicle(client, status, options.data)
+    : undefined;
+  const familyNames = new Map<string, string>([
+    ...roster.data.map((item) => [item.family_id, item.family_name] as const),
+    ...families.data.map((item) => [item.id, item.name] as const),
+  ]);
   return {
     model: {
       id,
-      query,
-      offers,
+      after: query.after_replacement,
+      contexts: offers.data.map((item) => item.family_id),
       offer,
       status,
-      trip,
-      frozen,
-      children,
-      locations,
-      riders,
-      participation,
-      options,
-      consents,
-      locked,
-      fields,
-      familyName,
-      visibleCoverage,
-      currentDriver,
-      driverPanel,
-      handoffs,
-      ownRiders,
-      needsConsent,
+      started,
+      completed,
+      awaitingReceipts,
+      // Children who have arrived and wait for this guardian to confirm.
+      myReceipts: handoffs.data.filter(
+        (item) =>
+          item.status === "awaiting_handoff" &&
+          item.recipient_id === session.data.session?.user.id,
+      ).length,
+      upcoming: Date.parse(offer.starts_at) > now,
+      userId: session.data.session?.user.id,
+      children: children.data,
+      exact: locations.data,
+      riders: riders.data,
+      participation: participation.data,
+      options: options.data,
+      offerDetails: offerDetails.data?.[0],
+      cars: vehicles.data as OfferCar[],
+      assignedVehicle,
+      familyNames,
     },
+  };
+}
+
+// The one thing this person has to do, in the attention tone. A ride shows at
+// most one of these, and it holds the screen's only primary button.
+function NextStep({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <UI.Section
+      className="attention"
+      role="region"
+      aria-label="Your next step"
+      style={{ marginTop: 0, borderWidth: 0 }}
+    >
+      <UI.Heading2 style={{ marginBottom: spacing.xs, color: colors.ink }}>
+        {title}
+      </UI.Heading2>
+      {children}
+    </UI.Section>
+  );
+}
+
+function RiderRow({ name, seat }: { name: string; seat: string }) {
+  return (
+    <View
+      style={[
+        styles.row,
+        { justifyContent: "space-between", paddingVertical: spacing.xs },
+      ]}
+    >
+      <UI.Inline>{name}</UI.Inline>
+      <UI.Small style={{ color: colors.muted }}>{seatWords(seat)}</UI.Small>
+    </View>
+  );
+}
+
+// Phone: one column in reading order. Wide screens: what to do and who drives
+// on the left, where and who rides on the right.
+function Layout({
+  lead,
+  driver,
+  riders,
+  where,
+  trip,
+  more,
+  underway,
+}: Record<
+  "lead" | "driver" | "riders" | "where" | "trip" | "more",
+  React.ReactNode
+> & { underway: boolean }) {
+  const { width } = useWindowDimensions();
+  const { tripCard, card } = tripFirst(underway);
+  // On the day, the trip's own steps lead.
+  if (width <= 900)
+    return underway
+      ? [
+          tripCard(trip),
+          card("driver", driver),
+          card("riders", riders),
+          card("where", where),
+          card("more", more),
+        ]
+      : [
+          card("lead", lead),
+          card("driver", driver),
+          card("riders", riders),
+          card("where", where),
+          tripCard(trip),
+          card("more", more),
+        ];
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "flex-start",
+        gap: spacing.xl,
+      }}
+    >
+      <View style={{ flex: 3, minWidth: 0 }}>
+        {underway
+          ? [tripCard(trip), card("driver", driver), card("more", more)]
+          : [
+              card("lead", lead),
+              card("driver", driver),
+              tripCard(trip),
+              card("more", more),
+            ]}
+      </View>
+      <View style={{ flex: 2, minWidth: 0 }}>
+        {where}
+        {riders}
+      </View>
+    </View>
+  );
+}
+
+// The Trip card moves to the top at the first pickup and back down after the
+// last handoff. It has to stay the same element through both moves, or the
+// step someone just pressed loses keyboard focus. So the Trip card keeps one
+// key, and the cards around it are keyed by phase and re-created instead.
+function tripFirst(underway: boolean) {
+  const phase = underway ? "underway" : "planned";
+  return {
+    tripCard: (node: React.ReactNode) => <Fragment key="trip">{node}</Fragment>,
+    card: (name: string, node: React.ReactNode) => (
+      <Fragment key={`${name}-${phase}`}>{node}</Fragment>
+    ),
   };
 }
 
@@ -279,432 +462,436 @@ const RideDetail = createScreen(
   loadRideDetail,
   ({
     id,
-    query,
-    offers,
+    after,
+    contexts,
     offer,
     status,
-    trip,
-    frozen,
+    started,
+    completed,
+    awaitingReceipts,
+    myReceipts,
+    upcoming,
+    userId,
     children,
-    locations,
+    exact,
     riders,
     participation,
     options,
-    consents,
-    locked,
-    fields,
-    familyName,
-    visibleCoverage,
-    currentDriver,
-    driverPanel,
-    handoffs,
-    ownRiders,
-    needsConsent,
-  }) => (
-    <>
-      <PageHeading
-        title={`${offer.pickup_summary} → ${offer.destination_summary}`}
-      >
-        {offer.direction === "return" ? "Return ride" : "Outbound ride"}
-      </PageHeading>
-      <UI.Box className="ride-time">
-        <UI.Paragraph>
-          Pickup:{" "}
-          <UI.Inline dateTime={offer.starts_at}>
-            {rideTime(offer.starts_at, offer.timezone)}
-          </UI.Inline>
-        </UI.Paragraph>
-        <UI.Paragraph>
-          Drop-off:{" "}
-          <UI.Inline dateTime={offer.ends_at}>
-            {rideTime(offer.ends_at, offer.timezone)}
-          </UI.Inline>
-        </UI.Paragraph>
-      </UI.Box>
-      {frozen && (
-        <UI.Anchor
-          className="button primary ride-next-action"
-          href="#trip-progress"
-        >
-          {trip.data?.completed_at
-            ? "Review completed handoffs"
-            : "Review pickup and handoffs"}{" "}
-          →
-        </UI.Anchor>
-      )}
-      {!status && !offer.cancelled_at && (
-        <StatusBadge tone={offer.status === "joined" ? "attention" : "neutral"}>
-          {offer.status === "joined"
-            ? "Needs a driver"
-            : "Private ride summary"}
-        </StatusBadge>
-      )}
-      {currentDriver && !offer.cancelled_at && (
-        <UI.Paragraph className="ride-current-driver">
-          <UI.Inline>
-            {trip.data?.completed_at ? "Trip driver" : "Current driver"}
-          </UI.Inline>{" "}
-          · {currentDriver}
-          {status?.proposal_status === "pending" &&
-            status.mode !== "initial" &&
-            " · Replacement under review"}
-        </UI.Paragraph>
-      )}
-      {!offer.cancelled_at &&
-        !frozen &&
-        status?.proposal_status === "pending" &&
-        (status.is_driver && !status.accepted_at ? (
-          <UI.Anchor
-            className="button primary ride-next-action"
-            href={`#driver-reply-${status.ride_id}`}
+    offerDetails,
+    cars,
+    assignedVehicle,
+    familyNames,
+  }) => {
+    const familyName = (familyId: string) =>
+      familyNames.get(familyId) ?? "Another family";
+    const cancelled = Boolean(offer.cancelled_at);
+    const joined = offer.status === "joined";
+    const live = status?.proposal_status === "pending";
+    const covered = status?.coverage === "confirmed";
+    // A family can change its own riders until the first pickup. The driver
+    // is told; nobody has to approve again.
+    const locked = started;
+    const open = !cancelled && !started;
+    const fields = {
+      ride_id: id,
+      family_id: offer.family_id,
+      revision: String(offer.revision),
+    };
+    const ownRiders = riders.filter((r) => r.family_id === offer.family_id);
+    const notReplied = participation
+      .filter((p) => p.status === "invited" && p.family_id !== offer.family_id)
+      .map((p) => midSentence(familyName(p.family_id)));
+    const summary = rideSummary({
+      familyStatus: offer.status,
+      cancelled,
+      status,
+      started,
+      completed,
+      awaitingReceipts,
+      myReceipts,
+    });
+
+    const asked =
+      open && live && Boolean(status?.is_driver) && !status?.accepted_at;
+    const takeover = live && covered;
+    const carChange =
+      takeover &&
+      (assignedVehicle?.driverId === status?.driver_id ||
+        Boolean(status?.is_current_driver && status?.is_driver));
+    const holder = status
+      ? firstName(status.current_driver_name || status.driver_name)
+      : "";
+    const driver = status ? firstName(status.driver_name) : "";
+
+    const joinForm = (
+      <>
+        {children.length ? (
+          <RideForm
+            key={`${offer.family_id}-${offer.revision}`}
+            command="respondToRideInvitation"
+            fields={{ ...fields, response: "join" }}
+            label="Join ride"
+            after="toast"
           >
-            Review driving request
-          </UI.Anchor>
-        ) : needsConsent && offer.status === "joined" ? (
-          <UI.Anchor
-            className="button primary ride-next-action"
-            href="#family-consent"
-          >
-            Review driver for your children
-          </UI.Anchor>
-        ) : null)}
-      {!status && <UI.Paragraph>{visibleCoverage}</UI.Paragraph>}
-      {offers.data.length > 1 && (
-        <UI.Nav aria-label="Your family contexts">
-          {offers.data.map((item) => (
-            <Link
-              key={item.family_id}
-              aria-current={
-                item.family_id === offer.family_id ? "page" : undefined
-              }
-              href={`/app/rides/${id}?family=${item.family_id}`}
-            >
-              {familyName(item.family_id)}
-            </Link>
-          ))}
-        </UI.Nav>
-      )}
-      {offer.cancelled_at && (
-        <UI.Paragraph role="status" className="notice neutral">
-          Cancelled for all families. This ride cannot be reopened.
-        </UI.Paragraph>
-      )}
-      <UI.Box className="ride-overview">
-        <UI.Section className="panel route-panel">
-          <UI.Heading2>Pickup and destination</UI.Heading2>
-          {locations.data ? (
-            <RouteSummary
-              pickup={locations.data.pickup}
-              destination={locations.data.destination}
-            />
-          ) : (
-            <RouteSummary
-              pickup={offer.pickup_summary}
-              destination={offer.destination_summary}
-            />
-          )}
-          <UI.Paragraph>
-            Pickup: {rideTime(offer.starts_at, offer.timezone)}
-            <UI.Break />
-            Drop-off: {rideTime(offer.ends_at, offer.timezone)}
-          </UI.Paragraph>
-          <UI.Paragraph className="section-caption">
-            {frozen
-              ? "Plan and responsibilities frozen after first pickup."
-              : "The driver and each family reply separately."}
-          </UI.Paragraph>
-        </UI.Section>
-        {driverPanel || (
-          <UI.Section className="panel">
-            <UI.Heading2>
-              {offer.cancelled_at
-                ? "Ride cancelled"
-                : offer.status === "joined"
-                  ? "A driver is needed"
-                  : "Your family’s invitation"}
-            </UI.Heading2>
-            <UI.Paragraph>
-              {offer.cancelled_at
-                ? "This ride is closed for every family. Its saved route and responses remain available below."
-                : offer.status === "joined"
-                  ? "Nominate an available adult and vehicle. Coverage requires their acceptance and consent for every enrolled child."
-                  : "Your family chooses its own riders. Exact locations and driver details are private until you join."}
+            <ChildChoices selectOnly>{children}</ChildChoices>
+            <AddChildSheet familyId={offer.family_id} />
+          </RideForm>
+        ) : (
+          <>
+            <UI.Paragraph style={[plain, { color: colors.ink }]}>
+              Add a child to put them on this ride.
             </UI.Paragraph>
-          </UI.Section>
+            <AddChildSheet familyId={offer.family_id} />
+          </>
         )}
-      </UI.Box>
-      {!locations.data && (
-        <UI.Paragraph>
-          Only the minimal invitation summary is available. Join with your own
-          child to view exact locations and riders.
-        </UI.Paragraph>
-      )}
-      {!offer.cancelled_at && offer.status === "joined" && (
-        <>
-          {!locked &&
-            status?.current_assignment_release_reason !== "withdrawn" && (
-              <UI.Section>
-                <UI.Heading2>Choose a driver</UI.Heading2>
-                <UI.Paragraph>
-                  Each invited family must respond before nomination. The driver
-                  and families then reply separately.
-                </UI.Paragraph>
-                <RideDriverNomination
-                  key={`nominate-${offer.revision}`}
-                  fields={fields}
-                  options={options.data}
-                  riderCount={riders.data.length}
-                />
-              </UI.Section>
-            )}
-          {status &&
-            (status.proposal_status === "pending" ||
-              status.proposal_status === "confirmed") &&
-            locked &&
-            !frozen && (
-              <UI.Section id="family-consent">
-                <UI.Heading2>
-                  {needsConsent
-                    ? "Your children’s consent"
-                    : "Your family’s consent"}
-                </UI.Heading2>
-                <UI.Paragraph>
-                  {status.driver_name} · {status.vehicle_label}
-                </UI.Paragraph>
-                <UI.List>
-                  {ownRiders.map((r) => (
-                    <UI.ListItem key={r.child_id}>
-                      {r.display_name}:{" "}
-                      {consents.data.some(
-                        (c) => c.child_id === r.child_id && !c.revoked_at,
-                      )
-                        ? "Consent saved"
-                        : "Consent required"}
-                    </UI.ListItem>
-                  ))}
-                </UI.List>
-                {status.proposal_status === "pending" && (
-                  <Disclosure
-                    title={
-                      needsConsent ? "Approve driver" : "Review saved consent"
-                    }
-                    open={needsConsent}
-                  >
-                    <UI.Paragraph>
-                      Vehicle version {status.vehicle_version} · Ride revision{" "}
-                      {status.ride_revision}. Your reply covers only your
-                      selected children.
-                    </UI.Paragraph>
-                    <DriverForm
-                      key={`consent-${status.proposal_id}`}
-                      command="consentForOwnChildren"
-                      fields={{
-                        proposal_id: status.proposal_id,
-                        revision: String(status.ride_revision),
-                        family_id: offer.family_id,
-                      }}
-                      label="Approve driver for selected children"
-                    >
-                      <ChildChoices>
-                        {ownRiders.map((r) => ({
-                          id: r.child_id,
-                          display_name: r.display_name,
-                        }))}
-                      </ChildChoices>
-                      <Confirmation>
-                        I explicitly consent to this driver, vehicle and plan
-                        for my selected children.
-                      </Confirmation>
-                    </DriverForm>
-                  </Disclosure>
-                )}
-                {consents.data.some((c) => !c.revoked_at) && (
-                  <Disclosure title="Revoke consent">
-                    <DriverForm
-                      command="revokeOwnConsent"
-                      fields={{
-                        proposal_id: status.proposal_id,
-                        revision: String(status.ride_revision),
-                        family_id: offer.family_id,
-                      }}
-                      label="Revoke selected child consent"
-                    >
-                      <ChildChoices>
-                        {ownRiders
-                          .filter((r) =>
-                            consents.data.some(
-                              (c) => c.child_id === r.child_id && !c.revoked_at,
-                            ),
-                          )
-                          .map((r) => ({
-                            id: r.child_id,
-                            display_name: r.display_name,
-                          }))}
-                      </ChildChoices>
-                      <Confirmation>
-                        I revoke consent and{" "}
-                        {status.mode !== "initial" &&
-                        status.proposal_status === "pending"
-                          ? "close this replacement request. An available original driver stays assigned."
-                          : "leave this ride needing a driver."}
-                      </Confirmation>
-                    </DriverForm>
-                  </Disclosure>
-                )}
-                {status.proposal_status === "pending" && (
-                  <Disclosure title="Cancel driver proposal">
-                    <DriverForm
-                      command="cancelDriverProposal"
-                      fields={{
-                        proposal_id: status.proposal_id,
-                        revision: String(status.ride_revision),
-                        family_id: offer.family_id,
-                      }}
-                      label="Cancel driver proposal"
-                    >
-                      <Confirmation>
-                        I cancel this nomination
-                        {status.mode !== "initial"
-                          ? ". An available original driver stays assigned."
-                          : " and release the roster for changes."}
-                      </Confirmation>
-                    </DriverForm>
-                  </Disclosure>
-                )}
-              </UI.Section>
-            )}
-        </>
-      )}
-      {handoffs}
-      {locations.data && (
-        <UI.Section className="roster-panel">
-          <UI.Heading2>Enrolled riders</UI.Heading2>
-          {riders.data.length ? (
-            <UI.List>
-              {riders.data.map((rider) => (
-                <UI.ListItem key={rider.child_id}>
-                  {rider.display_name} · {rider.seat_requirement} ·{" "}
-                  {familyName(rider.family_id)}
-                </UI.ListItem>
-              ))}
-            </UI.List>
-          ) : (
-            <UI.Paragraph>No riders currently enrolled.</UI.Paragraph>
+      </>
+    );
+
+    const step =
+      open && offer.status === "invited" ? (
+        <NextStep title="Are your children joining this ride?">
+          {covered && status && (
+            <UI.Paragraph style={[plain, { color: colors.ink }]}>
+              {`${holder} is driving the ${assignedVehicle?.label || status.vehicle_label}.`}
+            </UI.Paragraph>
           )}
-          <UI.Heading2>Family responses</UI.Heading2>
-          <UI.List>
-            {participation.data.map((item) => (
-              <UI.ListItem key={item.family_id}>
-                {familyName(item.family_id)} · {item.status}
-              </UI.ListItem>
-            ))}
-          </UI.List>
-        </UI.Section>
-      )}
-      {status && offer.status === "joined" && (
-        <ReplacementPanel
-          status={status}
-          familyId={offer.family_id}
-          revision={offer.revision}
-          frozen={frozen}
-          options={options.data}
-          after={query.after_replacement}
-        />
-      )}
-      {!offer.cancelled_at && (
-        <>
-          {!locked && (
-            <Disclosure
-              title={
-                offer.status === "joined"
-                  ? "Change your family’s riders"
-                  : "Respond for your family"
-              }
-              open={offer.status !== "joined"}
+          {joinForm}
+          <RideForm
+            command="respondToRideInvitation"
+            fields={{ ...fields, response: "decline" }}
+            label="Decline"
+            tone="quiet"
+            after="toast"
+          />
+        </NextStep>
+      ) : asked && status ? (
+        <NextStep
+          title={
+            carChange
+              ? "Finish your car change"
+              : takeover
+                ? "Can you take over driving?"
+                : "Can you drive this ride?"
+          }
+        >
+          <UI.Paragraph style={[plain, { color: colors.ink }]}>
+            {driverRequestLine(status)}
+          </UI.Paragraph>
+          <DriverReply status={status} carChange={carChange} />
+        </NextStep>
+      ) : null;
+
+    const others = options.filter(
+      (option) =>
+        option.driver_id !== userId && option.passenger_seats >= riders.length,
+    );
+    const noDriver = !covered && !live && !completed;
+    const droppedOut =
+      status?.current_assignment_release_reason === "withdrawn" &&
+      status.mode !== "unavailable";
+    // The line under the title. The Driver card already says who dropped out,
+    // so that part is not repeated; unanswered invitations still show.
+    const waitingOn =
+      noDriver && joined && open && notReplied.length
+        ? `${listed(notReplied)} ${notReplied.length === 1 ? "hasn’t" : "haven’t"} replied yet`
+        : "";
+    const lead = [noDriver && droppedOut ? "" : summary.detail, waitingOn]
+      .filter(Boolean)
+      .join(" · ");
+    const tooSmall =
+      cars.length > 0 &&
+      cars.every((car) => car.passenger_seats < riders.length);
+    const driverCard =
+      cancelled || (!joined && !status) ? null : (
+        <UI.Section>
+          <View style={stack}>
+            <UI.Heading2 style={cardTitle}>Driver</UI.Heading2>
+            <DriverSummary
+              status={status}
+              completed={completed}
+              assignedVehicle={assignedVehicle}
             >
-              <Link
-                className="text-link"
-                href={familyPath(offer.family_id)}
+              {noDriver &&
+                joined &&
+                open &&
+                (upcoming ? (
+                  <>
+                    <View style={styles.actionRow}>
+                      {offerDetails ? (
+                        <HomeDriverOffer
+                          details={offerDetails}
+                          familyId={offer.family_id}
+                          cars={cars}
+                          rideLabel={`${rideTimeShort(offer.starts_at, offer.timezone)} · ${offer.pickup_summary} → ${offer.destination_summary}`}
+                          primary
+                        />
+                      ) : (
+                        !cars.length && (
+                          <ActionDialog
+                            title="Add your car"
+                            triggerLabel="Add a car to drive"
+                            tone="primary"
+                          >
+                            <UI.Paragraph style={{ marginTop: 0 }}>
+                              Add the car you’d drive, then you can offer to
+                              take this ride.
+                            </UI.Paragraph>
+                            <AddVehicleForm />
+                          </ActionDialog>
+                        )
+                      )}
+                      <ActionDialog title="Ask someone else">
+                        <AskDriverForm
+                          command="proposeDriver"
+                          fields={fields}
+                          options={others}
+                          outcome={(name) =>
+                            `The ride is set as soon as ${name} says yes.`
+                          }
+                        />
+                      </ActionDialog>
+                    </View>
+                    {tooSmall && (
+                      <UI.Small style={{ color: colors.muted }}>
+                        Your car doesn’t have a seat for every rider.
+                      </UI.Small>
+                    )}
+                  </>
+                ) : null)}
+              {covered && joined && open && upcoming && status && (
+                <View style={styles.actionRow}>
+                  <ReplacementPanel
+                    status={status}
+                    familyId={offer.family_id}
+                    revision={offer.revision}
+                    frozen={started}
+                    // Asking is for someone else; nobody asks themselves.
+                    options={options.filter(
+                      (option) => option.driver_id !== userId,
+                    )}
+                    after={after}
+                    show="ask"
+                  />
+                </View>
+              )}
+            </DriverSummary>
+          </View>
+        </UI.Section>
+      );
+
+    const groups = participation
+      .map((p) => ({
+        id: p.family_id,
+        name: familyName(p.family_id),
+        reply: replyWords(p.status),
+        riders: riders.filter((r) => r.family_id === p.family_id),
+        mine: p.family_id === offer.family_id,
+      }))
+      .sort((a, b) => Number(b.mine) - Number(a.mine));
+    const ridersCard = exact ? (
+      <UI.Section>
+        <View style={stack}>
+          <UI.Heading2 style={cardTitle}>Riders</UI.Heading2>
+          {groups.map((group) => (
+            <View key={group.id}>
+              <UI.Inline className="meta-label">
+                {group.reply ? `${group.name} · ${group.reply}` : group.name}
+              </UI.Inline>
+              {group.riders.map((rider) => (
+                <RiderRow
+                  key={rider.child_id}
+                  name={rider.display_name}
+                  seat={rider.seat_requirement}
+                />
+              ))}
+            </View>
+          ))}
+          {joined && open && !locked && (
+            <View style={styles.actionRow}>
+              <ActionDialog
+                title="Change riders"
+                tone="quiet"
+                triggerStyle={{ paddingHorizontal: 0 }}
               >
-                Manage your children
-              </Link>
-              {offer.status === "joined" ? (
                 <RideForm
                   key={`${offer.family_id}-${offer.revision}`}
                   command="setOwnRideRiders"
                   fields={fields}
-                  label="Save own riders"
+                  label="Save riders"
                 >
-                  <ChildChoices
-                    selected={ownRiders.map((item) => item.child_id)}
-                  >
-                    {children.data}
+                  <ChildChoices selected={ownRiders.map((r) => r.child_id)}>
+                    {children}
                   </ChildChoices>
-                  <UI.Paragraph>
-                    Uncheck all children to withdraw your family and remove
-                    access to exact locations.
+                  <UI.Paragraph style={[plain, styles.small]}>
+                    {covered
+                      ? `Untick every child to take your family off this ride. ${
+                          status?.is_current_driver ? "The other families see" : `${holder} sees`
+                        } the change.`
+                      : "Untick every child to take your family off this ride."}
                   </UI.Paragraph>
                 </RideForm>
-              ) : (
-                <>
-                  {!!children.data.length && (
-                    <RideForm
-                      key={`${offer.family_id}-${offer.revision}`}
-                      command="respondToRideInvitation"
-                      fields={{ ...fields, response: "join" }}
-                      label="Join with own riders"
-                    >
-                      <ChildChoices>{children.data}</ChildChoices>
-                      <UI.Paragraph>Select at least one child.</UI.Paragraph>
-                    </RideForm>
-                  )}
-                  <RideForm
-                    command="respondToRideInvitation"
-                    fields={{ ...fields, response: "decline" }}
-                    label="Decline ride"
-                  />
-                </>
-              )}
-            </Disclosure>
+              </ActionDialog>
+              <AddChildSheet familyId={offer.family_id} />
+            </View>
           )}
-          {offer.can_cancel && !frozen && (
-            <Disclosure title="Cancel ride">
-              <RideForm
-                command="cancelRide"
-                fields={fields}
-                label="Cancel ride"
-              >
-                <UI.Label className="checkbox-label">
-                  <UI.Field
-                    type="checkbox"
-                    name="confirm"
-                    value="yes"
-                    required
-                  />
-                  I confirm cancellation for every family.
-                </UI.Label>
-              </RideForm>
-            </Disclosure>
-          )}
-        </>
-      )}
-      <Disclosure title="Plan details">
-        <UI.Paragraph>
-          {familyName(offer.family_id)} · {offer.status} · Revision{" "}
-          {offer.revision} · {offer.timezone}
-        </UI.Paragraph>
-        {locked && (
-          <UI.Paragraph>
-            {frozen
-              ? "The plan and responsibilities are frozen after first pickup."
-              : "Cancel the proposal, withdraw as driver or revoke consent before changing riders. Changes require fresh consent."}
+        </View>
+      </UI.Section>
+    ) : null;
+
+    const whereCard = (
+      <UI.Section>
+        <UI.Heading2 style={cardTitle}>Where</UI.Heading2>
+        <RouteSummary
+          pickup={exact?.pickup ?? offer.pickup_summary}
+          destination={exact?.destination ?? offer.destination_summary}
+        />
+        {!exact && (
+          <UI.Paragraph style={plain}>
+            Join to see addresses and who’s riding.
           </UI.Paragraph>
         )}
+      </UI.Section>
+    );
+
+    const rejoin =
+      open && !locked && upcoming && !joined && offer.status !== "invited" ? (
+        <UI.Section>
+          <View style={stack}>
+            <UI.Heading2 style={cardTitle}>Join after all</UI.Heading2>
+            {joinForm}
+          </View>
+        </UI.Section>
+      ) : null;
+
+    const trip = exact ? (
+      <HandoffPanel
+        rideId={id}
+        revision={offer.revision}
+        timezone={offer.timezone}
+        isDriver={Boolean(status?.is_current_driver)}
+        cancelled={cancelled}
+      />
+    ) : null;
+
+    const driverMore = status
+      ? driverOptions(status, { started, upcoming, assignedVehicle })
+      : null;
+    const canCancelRequest = joined && open && live;
+    const canCancelRide = offer.can_cancel && open;
+    const hasMore =
+      Boolean(
+        driverMore?.changeCar ||
+        driverMore?.stepBack ||
+        driverMore?.waitingOnSwap,
+      ) ||
+      canCancelRequest ||
+      canCancelRide ||
+      // What came of earlier driver changes.
+      (joined && Boolean(status) && status?.mode !== "initial");
+    const more = hasMore ? (
+      <Disclosure title="More" open={Boolean(after)}>
+        {status && driverMore && (
+          <DriverMore
+            status={status}
+            options={driverMore}
+            assignedVehicle={assignedVehicle}
+          />
+        )}
+        {canCancelRequest && status && (
+          <ActionDialog title="Cancel driver request" tone="danger">
+            <UI.Paragraph style={{ marginTop: 0 }}>
+              {takeover
+                ? `${status.is_current_driver ? "You keep" : `${holder} keeps`} driving.`
+                : `${status.is_driver ? "You" : driver} won’t be asked to drive, and this ride will need a driver.`}
+            </UI.Paragraph>
+            <DriverForm
+              command="cancelDriverProposal"
+              fields={{
+                proposal_id: status.proposal_id,
+                revision: String(status.ride_revision),
+                family_id: offer.family_id,
+              }}
+              label="Cancel request"
+              tone="danger"
+            />
+          </ActionDialog>
+        )}
+        {canCancelRide && (
+          <ActionDialog title="Cancel ride" tone="danger">
+            <UI.Paragraph style={{ marginTop: 0 }}>
+              This cancels the ride for every family. It can’t be undone.
+            </UI.Paragraph>
+            <RideForm
+              command="cancelRide"
+              fields={fields}
+              label="Cancel ride"
+              tone="danger"
+            >
+              <UI.Label className="checkbox-label">
+                <UI.Field type="checkbox" name="confirm" value="yes" required />
+                Cancel for every family
+              </UI.Label>
+            </RideForm>
+          </ActionDialog>
+        )}
+        {status && joined && (
+          <ReplacementPanel
+            status={status}
+            familyId={offer.family_id}
+            revision={offer.revision}
+            frozen={started}
+            options={[]}
+            after={after}
+            show="history"
+          />
+        )}
       </Disclosure>
-      <Link className="text-link" href="/app/schedule">
-        Weekly schedule <UI.Inline aria-hidden="true">›</UI.Inline>
-      </Link>
-    </>
-  ),
+    ) : null;
+
+    return (
+      <>
+        <PageHeading
+          title={`${offer.pickup_summary} → ${offer.destination_summary}`}
+          action={
+            <StatusBadge tone={summary.tone}>{summary.label}</StatusBadge>
+          }
+        >
+          {rideWhen(offer.starts_at, offer.ends_at, offer.timezone)}
+          {offer.direction === "return" ? " · Return" : ""}
+        </PageHeading>
+        {contexts.length > 1 && (
+          <UI.Nav aria-label="Your families">
+            {contexts.map((familyId) => (
+              <Link
+                key={familyId}
+                aria-current={familyId === offer.family_id ? "page" : undefined}
+                href={`/app/rides/${id}?family=${familyId}`}
+              >
+                {familyName(familyId)}
+              </Link>
+            ))}
+          </UI.Nav>
+        )}
+        {/* The Driver card already says who is driving a covered ride. */}
+        {!step && summary.tone !== "set" && lead && (
+          <UI.Paragraph style={{ marginTop: 0 }}>{lead}</UI.Paragraph>
+        )}
+        <Layout
+          lead={
+            <>
+              {step}
+              {rejoin}
+            </>
+          }
+          driver={driverCard}
+          riders={ridersCard}
+          where={whereCard}
+          trip={trip}
+          more={more}
+          underway={started && !completed}
+        />
+      </>
+    );
+  },
 );
 export default RideDetail;

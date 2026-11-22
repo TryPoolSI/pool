@@ -709,6 +709,11 @@ isOneToOne: false
               "can_cancel": boolean,"cancelled_at": string,"circle_id": string,"destination_summary": string,"direction": string,"ends_at": string,"family_id": string,"id": string,"pickup_summary": string,"revision": number,"starts_at": string,"status": string,"timezone": string
             }[]
                            },
+"ride_updates":
+{ Args: { "p_limit"?: number,"p_since": string }; Returns: {
+              "destination_summary": string,"kind": string,"occurred_at": string,"pickup_summary": string,"ride_id": string,"starts_at": string,"timezone": string,"who": string
+            }[]
+                           },
 "save_own_child":
 { Args: { "p_display_name": string,"p_family_id": string,"p_id": string,"p_revision": number,"p_seat_requirement": string }; Returns: string
                            },

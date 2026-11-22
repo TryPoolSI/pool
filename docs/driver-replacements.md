@@ -1,5 +1,8 @@
 # Driver replacements (R7)
 
+> The consent and "every family must answer" rules below were replaced by
+> [driver-coordination.md](driver-coordination.md). Read that first.
+
 R7 is stacked on [R6 #8](https://github.com/UWorldJK/pool/pull/8),
 `lkluge/ride-handoffs` at `04a39f0`. Its ancestry includes R1 through R6.
 The PR targets R6 so the review diff contains only R7. Retarget and revalidate

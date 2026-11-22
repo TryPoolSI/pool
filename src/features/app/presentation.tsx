@@ -1,8 +1,8 @@
-import { Image } from "react-native";
+import { Image, View } from "react-native";
 import logoMark from "@/assets/logo-mark.png";
 import * as UI from "@/ui/elements";
 import Link from "@/ui/link";
-import { colors, spacing } from "@/ui/styles";
+import { colors, fonts, radius, spacing } from "@/ui/styles";
 import { Icon } from "@/ui/icon";
 
 export function Brand({ compact = false }: { compact?: boolean }) {
@@ -12,15 +12,15 @@ export function Brand({ compact = false }: { compact?: boolean }) {
         source={logoMark}
         accessibilityIgnoresInvertColors
         aria-hidden={true}
-        style={{ width: compact ? 34 : 48, height: compact ? 34 : 48 }}
+        style={{ width: compact ? 36 : 44, height: compact ? 36 : 44 }}
       />
       <UI.Strong
         style={{
-          fontFamily: "Manrope",
-          fontSize: compact ? 27 : 37,
-          lineHeight: compact ? 32 : 42,
+          fontFamily: fonts.display,
+          fontSize: compact ? 26 : 32,
+          lineHeight: compact ? 32 : 38,
           fontWeight: "800",
-          letterSpacing: -2,
+          letterSpacing: compact ? -1.1 : -1.4,
         }}
       >
         pool.
@@ -49,26 +49,61 @@ export function PageHeading({
     </UI.Header>
   );
 }
+// A one-or-two-word state. The tone is carried by fill, outline and icon
+// together, never by colour alone:
+//   act      solid sun          the person looking has to do something
+//   open     outlined, car      the ride has no driver yet
+//   waiting  grey, clock        someone else has to answer
+//   set      sky wash, check    settled
+const badgeIcons = {
+  act: "arrow-right",
+  open: "car",
+  waiting: "clock",
+  set: "check",
+  positive: "check",
+} as const;
+const badgeInk = {
+  act: colors.ink,
+  open: colors.sunInk,
+  waiting: colors.muted,
+  set: colors.blue,
+  positive: colors.blue,
+} as const;
 export function StatusBadge({
   children,
   tone = "neutral",
 }: {
   children: React.ReactNode;
-  tone?: "neutral" | "attention" | "positive";
+  tone?:
+    | "neutral"
+    | "attention"
+    | "positive"
+    | "act"
+    | "open"
+    | "waiting"
+    | "set";
 }) {
+  const icon =
+    tone in badgeIcons ? badgeIcons[tone as keyof typeof badgeIcons] : null;
   return (
     <UI.Box className={`status-badge ${tone}`}>
-      <Icon
-        name={tone === "attention" ? "warning" : tone === "positive" ? "check" : "dot"}
-        size={13}
-        color={
-          tone === "attention"
-            ? colors.amber
-            : tone === "positive"
-              ? colors.green
-              : colors.muted
-        }
-      />
+      {icon ? (
+        <Icon
+          name={icon}
+          size={13}
+          color={badgeInk[tone as keyof typeof badgeInk]}
+        />
+      ) : (
+        <View
+          aria-hidden
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: radius.full,
+            backgroundColor: tone === "attention" ? colors.sun : colors.outline,
+          }}
+        />
+      )}
       <UI.Inline>{children}</UI.Inline>
     </UI.Box>
   );
@@ -114,24 +149,26 @@ export function EmptyState({
   children,
   href,
   action,
+  icon = "car",
 }: {
   title: string;
   children: React.ReactNode;
   href?: string;
   action?: string;
+  icon?: React.ComponentProps<typeof Icon>["name"];
 }) {
   return (
     <UI.Box className="empty-state">
       <UI.Box className="empty-symbol">
-        <Icon name="leaf" size={22} color={colors.green} />
+        <Icon name={icon} size={26} color={colors.ink} />
       </UI.Box>
       <UI.Heading3 style={emptyStateText}>{title}</UI.Heading3>
       <UI.Paragraph style={emptyStateText}>{children}</UI.Paragraph>
       {href && (
         <Link
-          className="button secondary"
+          className="button primary"
           href={href}
-          style={{ alignSelf: "center", marginTop: spacing.xs }}
+          style={{ alignSelf: "center", marginTop: spacing.sm }}
         >
           {action}
         </Link>
@@ -147,7 +184,7 @@ export { Icon } from "@/ui/icon";
 
 export function Avatar({
   name,
-  tone = "green",
+  tone = "sky",
 }: {
   name: string;
   tone?: string;

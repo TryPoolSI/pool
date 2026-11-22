@@ -16,6 +16,8 @@ import Link from "./link";
 import { Navigation } from "@/lib/navigation";
 import { Fields, type CommandInput } from "@/services/fields";
 import { OutcomeFocus } from "@/features/app/outcome-focus";
+import { useSheet } from "@/features/app/action-dialog";
+import { useToast } from "./toast";
 import type { MembershipState } from "@/lib/membership";
 export function CommandForm({
   action,
@@ -24,12 +26,14 @@ export function CommandForm({
   children,
   creates = false,
   disabled = false,
-  resultLabel = "Open saved result",
   onResult,
   focusTarget,
   resetOnSuccess = false,
   renderMessage,
   secondary = false,
+  tone,
+  after,
+  compact = false,
 }: {
   action: (fields: CommandInput) => Promise<MembershipState | void>;
   fields?: CommandInput;
@@ -37,14 +41,26 @@ export function CommandForm({
   children?: ReactNode;
   creates?: boolean;
   disabled?: boolean;
-  resultLabel?: string;
   focusTarget?: string;
   onResult?: (result: MembershipState) => void;
   resetOnSuccess?: boolean;
   renderMessage?: (message: string) => ReactNode;
   // Lower-emphasis submit for pages that already have a primary action (ADR-002).
   secondary?: boolean;
+  // "danger" for destructive commits, "quiet" for low-emphasis ones.
+  tone?: "danger" | "quiet";
+  // What happens after success. Defaults: a created thing opens, a form in a
+  // sheet closes it, anything else confirms inline beside the button.
+  //   "open"   replace this screen with result.path, and toast
+  //   "close"  close the surrounding sheet, and toast
+  //   "toast"  stay put and toast (the form's own surface is about to change)
+  //   "inline" stay put and show the message under the button
+  after?: "open" | "close" | "toast" | "inline";
+  // A lone button with no fields (a one-tap step in a list row): no margins.
+  compact?: boolean;
 }) {
+  const sheet = useSheet();
+  const toast = useToast();
   const [state, setState] = useState<MembershipState>({}),
     [pending, setPending] = useState(false),
     [copied, setCopied] = useState(false);
@@ -78,9 +94,29 @@ export function CommandForm({
       const result = await action({ ...fields, ...requestFields, ...values });
       if (!mounted.current) return;
       if (result) {
+        const ok = !result.error;
+        // Success returns the person to their task. A created thing opens; a
+        // sheet closes. Either way a toast confirms, because the form is gone.
+        const outcome = !ok
+          ? "inline"
+          : (after ??
+            (creates && result.path
+              ? "open"
+              : sheet && !result.token
+                ? "close"
+                : "inline"));
+        if (outcome !== "inline") {
+          toast(result.message || "Saved");
+          onResult?.(result);
+          if (outcome === "close") sheet?.close();
+          if (outcome === "open" && result.path)
+            router.replace(result.path as never);
+          if (outcome === "toast" && resetOnSuccess)
+            setFieldVersion((version) => version + 1);
+          return;
+        }
         setState(result);
-        if (resetOnSuccess && !result.error)
-          setFieldVersion((version) => version + 1);
+        if (resetOnSuccess && ok) setFieldVersion((version) => version + 1);
         onResult?.(result);
       }
     } catch (error) {
@@ -89,7 +125,7 @@ export function CommandForm({
       else
         setState({
           error:
-            "We could not save this change. It may have reached the server; refresh before retrying.",
+            "That didn’t go through. Your entries are still here, so check your connection and try again.",
         });
     } finally {
       busy.current = false;
@@ -108,6 +144,7 @@ export function CommandForm({
     <Form
       onValues={submit}
       disabled={disabled || pending || Boolean(creates && state.path)}
+      style={compact ? { marginVertical: 0, gap: 0 } : undefined}
     >
       <Fieldset>
         {resetOnSuccess ? (
@@ -115,12 +152,15 @@ export function CommandForm({
         ) : (
           children
         )}
-        <Button type="submit" className={secondary ? "secondary" : undefined}>
+        <Button
+          type="submit"
+          busy={pending}
+          className={tone ?? (secondary ? "secondary" : undefined)}
+        >
           {pending ? "Saving…" : label}
         </Button>
       </Fieldset>
       <OutcomeFocus state={state} focusTarget={focusTarget}>
-        {pending && <Paragraph role="status">Saving your change…</Paragraph>}
         {!pending && state.error && (
           <Paragraph role="alert">{state.error}</Paragraph>
         )}
@@ -129,15 +169,20 @@ export function CommandForm({
             {renderMessage ? renderMessage(state.message) : state.message}
           </Paragraph>
         )}
-        {!pending && state.path && <Link href={state.path}>{resultLabel}</Link>}
+        {!pending && state.path && !state.error && (
+          <Link className="button primary" href={state.path}>
+            Open it
+          </Link>
+        )}
         {/* `link` is "" without an invitation; never render a bare string in a View. */}
         {link ? (
-          <Box>
+          <Box style={{ gap: 12 }}>
             <Label>
-              Manual invitation link
+              Invitation link
               <Field readOnly value={link} />
             </Label>
             <Button
+              className="primary"
               onPress={async () => {
                 try {
                   await Clipboard.setStringAsync(link);
@@ -150,8 +195,8 @@ export function CommandForm({
               {copied ? "Copied" : "Copy invitation link"}
             </Button>
             <Paragraph>
-              Only the invited email can accept. Keep this link private. It is
-              shown once; create a replacement if lost.
+              Send this link yourself. Only the email you invited can use it,
+              and it is shown once.
             </Paragraph>
           </Box>
         ) : null}

@@ -6,7 +6,7 @@ export function SessionProblem() {
   return (
     <Box>
       <Paragraph role="alert">{error}</Paragraph>
-      <Button onPress={retry}>Retry session</Button>
+      <Button onPress={retry}>Try again</Button>
     </Box>
   );
 }

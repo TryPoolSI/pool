@@ -39,10 +39,10 @@ export async function saveRoute(input: CommandInput) {
   const fields = new Fields(input);
   const client = createClient();
   const user = await verifiedUser(client);
-  if (!user) return { error: "Sign in with a confirmed email and try again." };
+  if (!user) return { error: "Sign in again, then try once more." };
 
   const invalid = {
-    error: "Enter a route name, both summaries, and two different exact locations.",
+    error: "Add a route name and two different places.",
   };
   let args: Database["public"]["Functions"]["save_route"]["Args"];
   try {
@@ -63,24 +63,24 @@ export async function saveRoute(input: CommandInput) {
   const result = await client.rpc("save_route", args);
   switch (result.error?.code) {
     case "PT401":
-      return { error: "Sign in with a confirmed email and try again." };
+      return { error: "Sign in again, then try once more." };
     case "PT404":
-      return { error: "Saved routes are unavailable for this family." };
+      return { error: "Saved routes aren’t available for your family." };
     case "PT400":
     case "23514":
       return invalid;
     case "23505":
       return {
-        error: "Your family already has a route with this name. Choose another name.",
+        error: "You already have a route with that name. Pick another.",
       };
     case "PT409":
       return {
-        error: "This save conflicts with an earlier attempt. Reopen Save route and try again.",
+        error: "That didn’t go through. Close this and try saving the route again.",
       };
   }
   if (result.error || result.data !== args.p_id)
     return {
-      error: "Pool could not confirm the save. Retry with the same details.",
+      error: "That didn’t go through. Your entries are still here, so try again.",
     };
 
   void queryClient.invalidateQueries({

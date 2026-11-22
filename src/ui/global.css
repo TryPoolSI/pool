@@ -19,9 +19,19 @@ html {
 body {
   margin: 0;
   font-family: "DM Sans", sans-serif;
+  background: #f2f8fb;
+  -webkit-font-smoothing: antialiased;
+}
+[role="button"],
+[role="link"],
+[role="radio"],
+[role="checkbox"] {
+  transition:
+    opacity 120ms ease-out,
+    background-color 160ms ease-out;
 }
 :focus-visible {
-  outline: 3px solid #537dce;
+  outline: 3px solid #14294a;
   outline-offset: 3px;
 }
 .pool-skip-link {
@@ -31,7 +41,7 @@ body {
   transform: translateY(-200%);
   padding: 12px;
   background: white;
-  color: #255741;
+  color: #0a6f9a;
   z-index: 1000;
 }
 .pool-skip-link:focus {

@@ -11,6 +11,7 @@ import {
 import { rideAction } from "@/services/ride-actions";
 import { CommandForm } from "@/ui/command-form";
 import * as UI from "@/ui/elements";
+import { colors } from "@/ui/styles";
 import { ActionDialog, Avatar } from "../presentation";
 import { SeatField } from "../ride-form";
 
@@ -18,18 +19,30 @@ function ChildFields({ child }: { child?: FamilyChild }) {
   return (
     <>
       <UI.Label>
-        Child display name
+        Name
         <UI.Field
           name="display_name"
           defaultValue={child?.display_name}
           required
           maxLength={80}
+          autoComplete="off"
         />
       </UI.Label>
       <SeatField value={child?.seat_requirement} />
     </>
   );
 }
+
+function seatLabel(seat: string) {
+  const label =
+    seatRequirements[seat as keyof typeof seatRequirements] ?? "Standard";
+  return label.endsWith("seat") ? label : `${label} seat`;
+}
+
+const named = (values: { display_name?: unknown }, fallback: string) =>
+  typeof values.display_name === "string" && values.display_name.trim()
+    ? values.display_name.trim()
+    : fallback;
 
 function AddChildForm({ familyId }: { familyId: string }) {
   const draftId = useRef<string | null>(null);
@@ -47,10 +60,11 @@ function AddChildForm({ familyId }: { familyId: string }) {
             revision: "0",
           },
         );
-        if (!result.error) draftId.current = null;
-        return result;
+        if (result.error) return result;
+        draftId.current = null;
+        return { ...result, message: `${named(values, "Child")} added` };
       }}
-      label="Save child"
+      label="Add child"
       resetOnSuccess
     >
       <ChildFields />
@@ -79,10 +93,14 @@ function EditChildForm({
             revision: String(revision.current),
           },
         );
-        if (!result.error) revision.current += 1;
-        return result;
+        if (result.error) return result;
+        revision.current += 1;
+        return {
+          ...result,
+          message: `${named(values, child.display_name)} updated`,
+        };
       }}
-      label="Update child"
+      label="Save changes"
     >
       <ChildFields child={child} />
     </CommandForm>
@@ -104,68 +122,70 @@ export function FamilyChildren({
         .select("id,display_name,seat_requirement,revision")
         .eq("family_id", familyId)
         .abortSignal(signal);
-      if (error) throw new Error("The child roster could not be loaded.");
+      if (error) throw new Error("Pool couldn’t load your children.");
       return data.sort(compareChildren);
     },
   });
+  const empty = roster.data?.length === 0;
   return (
     <UI.Section>
-      <UI.Heading2>Children</UI.Heading2>
-      {roster.isPending && (
-        <UI.Paragraph role="status">Loading children…</UI.Paragraph>
-      )}
+      <UI.Box className="section-head">
+        <UI.Heading2 style={{ marginBottom: 0 }}>Children</UI.Heading2>
+        {roster.data && (
+          <ActionDialog
+            title="Add a child"
+            tone={empty ? "primary" : "secondary"}
+          >
+            <AddChildForm familyId={familyId} />
+          </ActionDialog>
+        )}
+      </UI.Box>
+      {roster.isPending && <UI.Loading />}
       {roster.isError && (
         <>
           <UI.Paragraph role="alert">
             {roster.data
-              ? "The child roster could not be refreshed."
+              ? "Pool can’t refresh your children right now, so this list may be out of date."
               : roster.error.message}
           </UI.Paragraph>
-          <UI.Button onPress={() => void roster.refetch()}>
-            Retry child roster
-          </UI.Button>
+          <UI.Button onPress={() => void roster.refetch()}>Try again</UI.Button>
         </>
       )}
-      {roster.data && (
-        <>
-          <UI.Heading3>Add a child</UI.Heading3>
-          <AddChildForm familyId={familyId} />
-          {roster.data.length ? (
-            // Rows, not cards: this roster already sits inside the Children panel.
-            <UI.Box style={{ marginTop: 8 }}>
-              {roster.data.map((child) => (
-                <UI.Box
-                  className="child-row"
-                  key={child.id}
-                  role="group"
-                  aria-label={child.display_name}
-                >
-                  <Avatar name={child.display_name} />
-                  <UI.Box style={{ flex: 1, minWidth: 140 }}>
-                    <UI.Heading3 style={{ marginTop: 0, marginBottom: 0 }}>
-                      {child.display_name}
-                    </UI.Heading3>
-                    <UI.Paragraph style={{ marginVertical: 0 }}>
-                      {seatRequirements[
-                        child.seat_requirement as keyof typeof seatRequirements
-                      ]}
-                    </UI.Paragraph>
-                  </UI.Box>
-                  <ActionDialog title={`Edit ${child.display_name}`}>
-                    <UI.Paragraph>
-                      Changes apply to future enrollment. Re-save riders on an
-                      existing ride to update its details.
-                    </UI.Paragraph>
-                    <EditChildForm familyId={familyId} child={child} />
-                  </ActionDialog>
-                </UI.Box>
-              ))}
-            </UI.Box>
-          ) : (
-            <UI.Paragraph>No children saved for this family.</UI.Paragraph>
-          )}
-        </>
+      {empty && (
+        <UI.Paragraph style={{ marginVertical: 0 }}>
+          Add a child to plan a ride.
+        </UI.Paragraph>
       )}
+      {roster.data?.map((child) => (
+        // Rows, not cards: this list already sits inside the Children card.
+        <UI.Box
+          className="child-row"
+          key={child.id}
+          role="group"
+          aria-label={child.display_name}
+        >
+          <Avatar name={child.display_name} />
+          <UI.Box style={{ flex: 1 }}>
+            <UI.Heading3 style={{ marginTop: 0, marginBottom: 0 }}>
+              {child.display_name}
+            </UI.Heading3>
+            <UI.Small style={{ color: colors.muted }}>
+              {seatLabel(child.seat_requirement)}
+            </UI.Small>
+          </UI.Box>
+          <ActionDialog
+            title={`Edit ${child.display_name}`}
+            triggerLabel="Edit"
+            tone="quiet"
+          >
+            <EditChildForm familyId={familyId} child={child} />
+            <UI.Small style={{ color: colors.muted }}>
+              Rides you already planned keep the old details until you save
+              their riders again.
+            </UI.Small>
+          </ActionDialog>
+        </UI.Box>
+      ))}
     </UI.Section>
   );
 }

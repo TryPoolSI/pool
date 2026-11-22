@@ -1,5 +1,5 @@
 import type { DateProps } from "./date-control";
-import { colors, fieldHeight, spacing } from "./styles";
+import { colors, fieldHeight, radius, spacing } from "./styles";
 export function DateControl({
   label,
   type,
@@ -21,8 +21,8 @@ export function DateControl({
         background: colors.surface,
         minHeight: fieldHeight,
         border: `1px solid ${colors.outline}`,
-        borderRadius: 8,
-        padding: `10px ${spacing.md}px`,
+        borderRadius: radius.md,
+        padding: `${spacing.md}px ${spacing.lg}px`,
         boxSizing: "border-box",
         width: "100%",
         minWidth: 0,

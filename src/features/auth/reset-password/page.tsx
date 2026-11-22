@@ -15,7 +15,7 @@ const ResetPassword = createScreen(loadResetPassword, () => (
   <>
     <UI.Heading1>Choose a new password</UI.Heading1>
     <UI.Paragraph>
-      Saving signs out your sessions. Sign in again with your new password.
+      Saving signs you out everywhere. Sign in again with your new password.
     </UI.Paragraph>
     <AuthForm mode="reset" />
     <Link href="/app">Back to your account</Link>

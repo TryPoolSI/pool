@@ -10,8 +10,8 @@ export default function AuthError() {
       <UI.Heading1>This link could not be used</UI.Heading1>
       <UI.Paragraph>
         {signup
-          ? "This confirmation link may be invalid, expired, or already used. Request another link, or sign in if you’ve already confirmed your email."
-          : "The link may be invalid, expired, already used, or opened in a different browser. Please request a new link and try again."}
+          ? "This confirmation link has expired or was already used. Ask for a new one, or sign in if you’ve already confirmed your email."
+          : "This link has expired, was already used, or was opened in a different browser. Ask for a new one and try again."}
       </UI.Paragraph>
       <UI.Nav aria-label="Try again">
         {!signup && (

@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { newRequestId } from "@/lib/request-id";
 import type { Database } from "@/lib/supabase/database.types";
 import { driverAction } from "@/services/driver-actions";
 import { CommandForm } from "@/ui/command-form";
 import * as UI from "@/ui/elements";
-import { followAnchor } from "@/ui/platform";
+import { ActionDialog } from "./action-dialog";
+import { AddVehicleForm } from "./driver-form";
 
 export type OfferDetails =
   Database["public"]["Functions"]["drive_offer_details"]["Returns"][number];
@@ -13,58 +14,63 @@ export type OfferCar = Pick<
   "id" | "label" | "passenger_seats" | "version"
 >;
 
+function seatNeeds({ booster_count: boosters, child_seat_count: seats }: OfferDetails) {
+  return [
+    boosters && `${boosters} ${boosters === 1 ? "booster" : "boosters"}`,
+    seats && `${seats} ${seats === 1 ? "child seat" : "child seats"}`,
+  ].filter(Boolean) as string[];
+}
+
+// Offering to drive is one decision: "yes, in this car". Pool already knows
+// the riders and the car's seats, so the sheet asks only what it cannot know.
 export function HomeDriverOffer({
   details,
+  riderCount,
   familyId,
   cars,
   rideLabel,
   primary = false,
 }: {
   details?: OfferDetails;
+  // Pool sends no offer details to an adult with no car, or with no car big
+  // enough. The rider count alone still lets the card say which it is.
+  riderCount?: number;
   familyId: string;
   cars: OfferCar[];
   rideLabel: string;
   primary?: boolean;
 }) {
-  const [draft, setDraft] = useState<{
-    details: OfferDetails;
-    familyId: string;
-    cars: OfferCar[];
-  } | null>(null);
-  // Only move focus after the user opened or closed the form, never on load.
-  const returnFocus = useRef(false);
-  const eligible = details
-    ? cars.filter((car) => car.passenger_seats >= details.rider_count)
-    : [];
-  const triggerId = details ? `offer-${details.ride_id}` : undefined;
-
-  useEffect(() => {
-    if (!draft && returnFocus.current && triggerId) {
-      returnFocus.current = false;
-      followAnchor(triggerId);
-    }
-  }, [draft, triggerId]);
-
-  if (draft)
+  const riders = details?.rider_count ?? riderCount;
+  if (riders === undefined) return null;
+  const eligible = cars.filter((car) => car.passenger_seats >= riders);
+  if (!cars.length)
     return (
-      <OfferForm
-        {...draft}
-        rideLabel={rideLabel}
-        onClose={() => {
-          returnFocus.current = true;
-          setDraft(null);
-        }}
-      />
+      <ActionDialog title="Add your car" triggerLabel="Add a car to drive">
+        <UI.Paragraph>
+          Add the car you’d drive, then you can offer to take this ride.
+        </UI.Paragraph>
+        <AddVehicleForm />
+      </ActionDialog>
     );
-  if (!details || !eligible.length) return null;
+  if (!eligible.length)
+    return (
+      <UI.Small>
+        {`This ride has ${riders} riders, more than your car seats.`}
+      </UI.Small>
+    );
+  if (!details) return null;
   return (
-    <UI.Button
-      id={triggerId}
-      className={primary ? "primary" : undefined}
-      onPress={() => setDraft({ details, familyId, cars: eligible })}
+    <ActionDialog
+      title="I’ll drive"
+      tone={primary ? "primary" : "secondary"}
     >
-      I can drive
-    </UI.Button>
+      <OfferForm
+        details={details}
+        familyId={familyId}
+        cars={eligible}
+        rideLabel={rideLabel}
+      />
+    </ActionDialog>
   );
 }
 
@@ -73,37 +79,23 @@ function OfferForm({
   familyId,
   cars,
   rideLabel,
-  onClose,
 }: {
   details: OfferDetails;
   familyId: string;
   cars: OfferCar[];
   rideLabel: string;
-  onClose: () => void;
 }) {
   const [requestId] = useState(newRequestId);
   const [car, setCar] = useState(cars[0]);
-  const headingId = `offer-heading-${details.ride_id}`;
-  const {
-    rider_count: riders,
-    booster_count: boosters,
-    child_seat_count: childSeats,
-  } = details;
-
-  useEffect(() => {
-    followAnchor(headingId);
-  }, [headingId]);
-
+  const riders = details.rider_count;
+  const needs = seatNeeds(details);
   return (
-    <UI.Box className="offer-form">
-      <UI.Heading3 id={headingId} style={{ marginTop: 0 }}>
-        {`Offer to drive · ${rideLabel}`}
-      </UI.Heading3>
-      <UI.Paragraph>
-        {riders === 1 ? "1 rider needs a seat." : `${riders} riders need seats.`}
-      </UI.Paragraph>
-      <UI.Paragraph>
-        {`Required restraints: ${boosters} booster ${boosters === 1 ? "seat" : "seats"} · ${childSeats} child ${childSeats === 1 ? "seat" : "seats"}`}
+    <>
+      <UI.Paragraph style={{ marginTop: 0 }}>
+        {rideLabel}
+        {"\n"}
+        {riders === 1 ? "1 rider" : `${riders} riders`}
+        {needs.length ? ` · needs ${needs.join(" and ")}` : ""}
       </UI.Paragraph>
       <CommandForm
         action={(fields) => driverAction({}, fields)}
@@ -113,57 +105,52 @@ function OfferForm({
           ride_id: details.ride_id,
           family_id: familyId,
           revision: String(details.ride_revision),
+          vehicle_id: car.id,
           vehicle_version: String(car.version),
+          // The whole car is offered; nobody needs to count seats.
+          available_seats: String(car.passenger_seats),
+          // With no boosters or child seats needed there is nothing to confirm.
+          ...(needs.length ? {} : { restraints: "yes" }),
         }}
-        label="Offer to drive"
-        creates
-        onResult={(result) => {
-          if (result.path) onClose();
-        }}
+        label="I’ll drive"
+        after="close"
       >
-        <UI.Label>
-          Car
-          <UI.Select
-            name="vehicle_id"
-            value={car.id}
-            onChange={(event) => {
-              const selected = cars.find(
-                (option) => option.id === event.target.value,
-              );
-              if (selected) setCar(selected);
-            }}
-            required
-          >
-            {cars.map((option) => (
-              <UI.Option key={option.id} value={option.id}>
-                {`${option.label} · ${option.passenger_seats} passenger seats`}
-              </UI.Option>
-            ))}
-          </UI.Select>
-        </UI.Label>
-        <UI.Label>
-          Passenger seats you can offer
-          <UI.Field
-            key={car.id}
-            name="available_seats"
-            type="number"
-            min={1}
-            max={car.passenger_seats}
-            step={1}
-            defaultValue={car.passenger_seats}
-            required
-          />
-        </UI.Label>
-        <UI.Label className="checkbox-label">
-          <UI.Field type="checkbox" name="restraints" value="yes" required />
-          I can accommodate the required restraints for every rider.
-        </UI.Label>
-        <UI.Small>
-          Once you offer, each family on this ride approves you for their own
-          children. The ride is covered when every family has approved.
-        </UI.Small>
+        {cars.length > 1 ? (
+          <UI.Label>
+            Car
+            <UI.Select
+              name="car_choice"
+              value={car.id}
+              onChange={(event) => {
+                const selected = cars.find(
+                  (option) => option.id === event.target.value,
+                );
+                if (selected) setCar(selected);
+              }}
+            >
+              {cars.map((option) => (
+                <UI.Option key={option.id} value={option.id}>
+                  {`${option.label} · ${option.passenger_seats} seats`}
+                </UI.Option>
+              ))}
+            </UI.Select>
+          </UI.Label>
+        ) : (
+          <UI.Paragraph style={{ marginVertical: 0 }}>
+            {`You’ll drive the ${car.label}.`}
+          </UI.Paragraph>
+        )}
+        {needs.length > 0 && (
+          <UI.Label className="checkbox-label">
+            <UI.Field type="checkbox" name="restraints" value="yes" required />
+            {`I have ${needs.join(" and ")}`}
+          </UI.Label>
+        )}
+        <UI.Paragraph style={{ marginVertical: 0, fontSize: 14 }}>
+          You’re the driver as soon as you tap. The families on this ride are
+          told.
+        </UI.Paragraph>
       </CommandForm>
-      <UI.Button onPress={onClose}>Cancel</UI.Button>
-    </UI.Box>
+    </>
   );
 }

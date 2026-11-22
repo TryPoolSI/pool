@@ -1,29 +1,36 @@
 import type { Database } from "./supabase/database.types";
 export type DriverState = { error?: string; message?: string; path?: string };
 export type DriverStatus = Database["public"]["Functions"]["driver_status"]["Returns"][number];
-export function coverageLabel(coverage?: string, acceptedAt?: string | null) {
-  if (coverage === "confirmed") return "Confirmed";
-  if (coverage === "awaiting_confirmation")
-    return acceptedAt ? "Awaiting guardian approval" : "Awaiting confirmation";
-  return "Unassigned — needs a driver";
+// "1 booster", "2 child seats": what a driver has to bring for these riders.
+export function seatNeeds({
+  booster_count: boosters,
+  child_seat_count: seats,
+}: {
+  booster_count: number;
+  child_seat_count: number;
+}) {
+  return [
+    boosters && `${boosters} ${boosters === 1 ? "booster" : "boosters"}`,
+    seats && `${seats} ${seats === 1 ? "child seat" : "child seats"}`,
+  ].filter(Boolean) as string[];
 }
 export function driverError(code: string) {
   switch (code) {
-    case "PT401": return "Sign in with a confirmed email and try again.";
-    case "PT404": return "This driver, proposal, vehicle or family is unavailable to this account.";
-    case "PT409": case "23505": return "This proposal, vehicle or plan changed or was closed. Reload current data before trying again.";
-    case "PT410": return "The reply deadline has passed. Reload to see current coverage; an optional swap preserves its available original driver.";
-    case "PT422": return "All families must respond, enough passenger seats must be available, and the driver must acknowledge every required restraint.";
-    case "PT423": return "Resolve the current proposal or assignment before changing this vehicle or roster. Before pickup, withdraw or revoke consent first for a confirmed assignment. After pickup, ordinary changes are unavailable.";
-    case "PT424": case "23P01": return "This driver or vehicle is already reserved for an overlapping ride. No assignment was made; resolve the conflict and reply again.";
-    case "PT400": case "23514": case "23503": return "Check the vehicle, seats and selected children. Consent is only for your own enrolled children.";
-    default: return "We could not save this change. Your request may have reached the server; reload before retrying.";
+    case "PT401": return "Sign in again, then try once more.";
+    case "PT404": return "That driver or car isn’t available for this ride anymore. Choose another.";
+    case "PT409": case "23505": return "Someone else just changed this ride. You’re seeing the latest now, so try again.";
+    case "PT410": return "The time to reply has passed. Ask again to line up a driver.";
+    case "PT422": return "This car can’t take the ride. It needs a seat for every rider, plus any boosters or child seats they need.";
+    case "PT423": return "This can’t change after the first pickup.";
+    case "PT424": case "23P01": return "That driver or car is already on another ride at this time. Choose someone else.";
+    case "PT400": case "23514": case "23503": return "Something here doesn’t fit. Check what you entered, then try again.";
+    default: return "That didn’t go through. Check your connection and try again.";
   }
 }
 
 export function driverPageCursor(query: { after_start?: string; after_id?: string }) {
   if (!query.after_start && !query.after_id) return {};
-  if (!query.after_start || query.after_start.length > 50 || !Number.isFinite(Date.parse(query.after_start)) || !query.after_id || !/^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(query.after_id)) throw new Error("Invalid driving page. Open the first page and try again.");
+  if (!query.after_start || query.after_start.length > 50 || !Number.isFinite(Date.parse(query.after_start)) || !query.after_id || !/^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(query.after_id)) throw new Error("That page isn’t available. Go back to the first page and try again.");
   return { p_after_start:new Date(query.after_start).toISOString(),p_after_id:query.after_id };
 }
 export function driverNextPage(last: DriverStatus, pendingOnly: boolean) {

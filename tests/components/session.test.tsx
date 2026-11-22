@@ -124,8 +124,8 @@ test("a thrown secure-session read shows a recoverable error and never loads pri
     ).toBeTruthy(),
   );
   expect(load).not.toHaveBeenCalled();
-  expect(screen.queryByText("Loading your current information…")).toBeNull();
-  await fireEvent.press(screen.getByText("Retry session"));
+  expect(screen.queryByText("Loading…")).toBeNull();
+  await fireEvent.press(screen.getByText("Try again"));
   await waitFor(() =>
     expect(screen.getByText("Verified account")).toBeTruthy(),
   );

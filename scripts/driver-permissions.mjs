@@ -73,12 +73,23 @@ export async function driverPermissionTests(status,sql) {
   function nomination(r,changes={}) {return {p_id:crypto.randomUUID(),p_ride_id:r.ride,p_family_id:fa,p_revision:r.revision,p_driver_id:d.id,p_driver_family_id:fd,p_vehicle_id:car,p_vehicle_version:1,...changes};}
   async function propose(r,changes={}) { const args=nomination(r,changes); const id=await ok(a.db,"propose_driver",args); return {p_id:id,p_revision:r.revision+1}; }
   async function state(r,db=a.db) {return (await ok(db,"driver_status",{p_ride_id:r.ride}))[0];}
-  const notReady=await make({respond:false});
-  await denied(a.db,"propose_driver",nomination(notReady),"PT422");
-  await ok(b.db,"respond_to_ride_invitation",{p_ride_id:notReady.ride,p_family_id:fb,p_revision:1,p_accept:false,p_child_ids:[]});
-  notReady.revision=2;const declinedFamily=await propose(notReady);
-  assert.equal((await state(notReady)).rider_count,1,"Declined family contributes no riders");
-  await ok(d.db,"decline_driver_proposal",declinedFamily);
+  // A family that has not answered does not hold up asking a driver, and it
+  // sees who was asked before it answers. An unrelated account still sees nothing.
+  const unanswered=await make({respond:false});
+  const early=await propose(unanswered);
+  assert.equal((await state(unanswered)).coverage,"awaiting_confirmation","A driver can be asked while a family is still invited");
+  assert.equal((await state(unanswered)).rider_count,1,"An unanswered invitation supplies no riders");
+  assert.equal((await state(unanswered,b.db)).proposal_id,early.p_id,"Invited family reads the driver request");
+  assert.equal((await ok(b.db,"driver_statuses",{p_ride_ids:[unanswered.ride]})).length,1);
+  assert.deepEqual(await ok(outsider.db,"driver_status",{p_ride_id:unanswered.ride}),[]);
+  assert.deepEqual(await ok(outsider.db,"driver_statuses",{p_ride_ids:[unanswered.ride]}),[]);
+  assert.deepEqual((await b.db.from("driver_proposals").select("*").eq("ride_id",unanswered.ride)).data,[],"Invited family gets the projection, not roster snapshots");
+  // Declining with a driver asked keeps the request and the ride revision.
+  assert.equal(await ok(b.db,"respond_to_ride_invitation",{p_ride_id:unanswered.ride,p_family_id:fb,p_revision:early.p_revision,p_accept:false,p_child_ids:[]}),early.p_revision);
+  assert.equal((await state(unanswered)).proposal_id,early.p_id);
+  assert.equal((await state(unanswered)).rider_count,1,"Declined family contributes no riders");
+  assert.deepEqual(await ok(b.db,"driver_status",{p_ride_id:unanswered.ride}),[],"A family that declined no longer reads the driver");
+  await ok(d.db,"decline_driver_proposal",early);
   const r=await make();
   for(const change of [{p_vehicle_id:ownCar},{p_vehicle_version:2},{p_driver_id:outsider.id},{p_vehicle_id:small}]) await denied(a.db,"propose_driver",nomination(r,change));
   await denied(outsider.db,"propose_driver",nomination(r),"PT404");
@@ -109,9 +120,7 @@ export async function driverPermissionTests(status,sql) {
   assert.ok(!JSON.stringify(minimal).includes(ca));assert.ok(!JSON.stringify(minimal).includes("Secret Place"));
   await denied(anon,"pending_family_consents",{});
   const pendingConsents = async (db) => (await ok(db,"pending_family_consents",{})).map(({ride_id}) => ride_id);
-  assert.deepEqual(await pendingConsents(b.db),[r.ride],"Guardian sees consent before the driver replies");
-  assert.deepEqual(await pendingConsents(d.db),[],"Driver-only access does not grant a consent task");
-  assert.deepEqual(await pendingConsents(outsider.db),[]);
+  for(const person of [a,b,g,d,outsider]) assert.deepEqual(await pendingConsents(person.db),[],"No ride waits on a family's consent");
   await denied(a.db,"accept_driver_proposal",{...p,p_available_seats:4,p_restraints:true},"PT404");
   await denied(d.db,"accept_driver_proposal",{...p,p_available_seats:2,p_restraints:true},"PT422");
   await denied(d.db,"accept_driver_proposal",{...p,p_available_seats:5,p_restraints:true},"PT422");
@@ -121,20 +130,22 @@ export async function driverPermissionTests(status,sql) {
   await denied(b.db,"consent_for_own_children",{...p,p_family_id:fb,p_child_ids:[ca]},"PT400");
   await denied(d.db,"consent_for_own_children",{...p,p_family_id:fd,p_child_ids:[ca]},"PT404");
   await denied(b.db,"consent_for_own_children",{...p,p_family_id:fb,p_child_ids:[cb,cb]},"PT400");
-  await denied(a.db,"set_own_ride_riders",{p_ride_id:r.ride,p_family_id:fa,p_revision:p.p_revision,p_child_ids:[ca]},"PT423");
+  // Saving the same riders with a driver asked keeps the request and the revision.
+  assert.equal(await ok(a.db,"set_own_ride_riders",{p_ride_id:r.ride,p_family_id:fa,p_revision:p.p_revision,p_child_ids:[ca]}),p.p_revision);
+  assert.equal((await state(r)).proposal_id,p.p_id);assert.equal((await state(r)).proposal_status,"pending");assert.equal((await state(r)).rider_count,3);
   await denied(d.db,"save_vehicle",{...carArgs,p_version:1,p_passenger_seats:3},"PT423");
   await denied(d.db,"save_vehicle",{...carArgs,p_version:1,p_retire:true},"PT423");
-  assert.equal(await ok(d.db,"accept_driver_proposal",{...p,p_available_seats:4,p_restraints:true}),"awaiting_confirmation");
-  await ok(a.db,"consent_for_own_children",{...p,p_family_id:fa,p_child_ids:[ca]});
-  await ok(b.db,"consent_for_own_children",{...p,p_family_id:fb,p_child_ids:[cb]});
-  assert.equal((await state(r)).coverage,"awaiting_confirmation","One missing child consent prevents confirmation");
-  assert.deepEqual(await pendingConsents(a.db),[],"Another family's missing consent does not count");
-  assert.deepEqual(await pendingConsents(g.db),[r.ride],"Any guardian of the child can supply the missing consent");
+  assert.equal(await ok(d.db,"accept_driver_proposal",{...p,p_available_seats:4,p_restraints:true}),"confirmed","The driver's own yes confirms the ride");
+  assert.equal((await state(r)).coverage,"confirmed");assert.equal((await state(r)).consent_count,0,"No family consent was needed");
+  // Consent is still accepted from clients that send it; it changes nothing.
+  assert.equal(await ok(a.db,"consent_for_own_children",{...p,p_family_id:fa,p_child_ids:[ca]}),"confirmed");
+  assert.equal(await ok(b.db,"consent_for_own_children",{...p,p_family_id:fb,p_child_ids:[cb]}),"confirmed");
   const last={...p,p_family_id:fb,p_child_ids:[cb2]};
   const final=await Promise.all([b.db.rpc("consent_for_own_children",last),g.db.rpc("consent_for_own_children",last),d.db.rpc("accept_driver_proposal",{...p,p_available_seats:4,p_restraints:true})]);
   final.forEach(x=>assert.ifError(x.error));
-  assert.equal(final[0].data,"confirmed");assert.equal(final[1].data,"confirmed");assert.ok(["awaiting_confirmation","confirmed"].includes(final[2].data));
-  assert.deepEqual(await pendingConsents(b.db),[],"Recorded consent clears the task");
+  final.forEach(x=>assert.equal(x.data,"confirmed","Concurrent retries of a confirmed plan are harmless"));
+  assert.equal((await state(r)).consent_count,3);
+  assert.deepEqual(await pendingConsents(b.db),[]);
   assert.equal(sql(`select count(*) from public.driver_assignments where ride_id='${r.ride}' and released_at is null`),"1");
   assert.equal((await d.db.from("ride_locations").select("*").eq("ride_id",r.ride)).data.length,1);
   assert.deepEqual((await d.db.from("children").select("*").eq("family_id",fa)).data,[]);
@@ -203,27 +214,28 @@ export async function driverPermissionTests(status,sql) {
 
   // Even a reply admitted before the deadline may expire while waiting on a
   // vehicle lock. The last boundary check must use database time after waiting.
-  for(const lastReply of [true,false]) {
+  // The driver's accept is the confirming reply; a family's optional consent is not.
+  for(const confirming of [true,false]) {
     const delayed=await make({two:false}),pd=await propose(delayed);
-    if(lastReply) await ok(d.db,"accept_driver_proposal",{...pd,p_available_seats:4,p_restraints:true});
     const locker=new pg.Client({connectionString:status.DB_URL});await locker.connect();
     try {
       await locker.query("begin");await locker.query("select id from public.vehicles where id=$1 for update",[car]);
       sql(`update public.driver_proposals set deadline=clock_timestamp()+interval '1 second' where id='${pd.p_id}'`);
-      const pendingReply=(lastReply ? a.db.rpc("consent_for_own_children",{...pd,p_family_id:fa,p_child_ids:[ca]}) :
-        d.db.rpc("accept_driver_proposal",{...pd,p_available_seats:4,p_restraints:true})).then(r=>r);
+      const pendingReply=(confirming ? d.db.rpc("accept_driver_proposal",{...pd,p_available_seats:4,p_restraints:true}) :
+        a.db.rpc("consent_for_own_children",{...pd,p_family_id:fa,p_child_ids:[ca]})).then(r=>r);
       await new Promise(resolve=>setTimeout(resolve,1200));await locker.query("commit");
-      assert.equal((await pendingReply).error?.code,"PT410","Deadline rechecked after lock wait, including non-final replies");
+      assert.equal((await pendingReply).error?.code,"PT410","Deadline rechecked after lock wait, including non-confirming replies");
       assert.equal((await state(delayed)).consent_count,0);
-      if(!lastReply) assert.equal((await state(delayed)).accepted_at,null);
+      assert.equal((await state(delayed)).accepted_at,null);
+      assert.equal(sql(`select count(*) from public.driver_assignments where ride_id='${delayed.ride}'`),"0");
     }finally {await locker.end();}
   }
-  // Vehicle versions are rechecked by the last reply, even if privileged fixture
-  // setup bypasses the normal command's dependency guard.
+  // Vehicle versions are rechecked by the confirming reply, even if privileged
+  // fixture setup bypasses the normal command's dependency guard.
   const stale=await make({two:false}),pv=await propose(stale);
-  await ok(d.db,"accept_driver_proposal",{...pv,p_available_seats:4,p_restraints:true});
   sql(`update public.vehicles set version=2 where id='${car}'`);
-  await denied(a.db,"consent_for_own_children",{...pv,p_family_id:fa,p_child_ids:[ca]},"PT409");
+  await denied(d.db,"accept_driver_proposal",{...pv,p_available_seats:4,p_restraints:true},"PT409");
+  assert.equal((await state(stale)).accepted_at,null);
   sql(`update public.vehicles set version=1 where id='${car}'`);
   await ok(a.db,"cancel_driver_proposal",{...pv,p_family_id:fa});
 
@@ -235,22 +247,21 @@ export async function driverPermissionTests(status,sql) {
   const x=await make({two:false});
   const y={ride:await ok(outsider.db,"create_ride",rideArgs(fout,otherCircle,[cout])),revision:1};
   const px=await propose(x),py={p_id:await ok(outsider.db,"propose_driver",nomination(y,{p_family_id:fout,p_driver_family_id:fd,p_vehicle_id:secondCar})),p_revision:2};
-  for(const p0 of [px,py]) await ok(d.db,"accept_driver_proposal",{...p0,p_available_seats:4,p_restraints:true});
-  const races=await Promise.all([a.db.rpc("consent_for_own_children",{...px,p_family_id:fa,p_child_ids:[ca]}),outsider.db.rpc("consent_for_own_children",{...py,p_family_id:fout,p_child_ids:[cout]})]);
+  const races=await Promise.all([px,py].map(p0=>d.db.rpc("accept_driver_proposal",{...p0,p_available_seats:4,p_restraints:true})));
   assert.equal(races.filter(z=>!z.error).length,1);assert.equal(races.find(z=>z.error).error.code,"PT424");
   const xWon=!races[0].error;
   const win=xWon?x:y,loss=xWon?y:x,ploss=xWon?py:px;
   const winningDb=xWon?a.db:outsider.db,losingDb=xWon?outsider.db:a.db;
-  const winningFamily=xWon?fa:fout,losingFamily=xWon?fout:fa,losingChild=xWon?cout:ca;
-  assert.equal((await state(loss,losingDb)).consent_count,0,"Conflicting final reply rolls back across circles");
+  const winningFamily=xWon?fa:fout;
+  assert.equal((await state(loss,losingDb)).accepted_at,null,"Conflicting confirming reply rolls back across circles");
+  assert.equal((await state(loss,losingDb)).coverage,"awaiting_confirmation");
   await ok(winningDb,"cancel_ride",{p_ride_id:win.ride,p_family_id:winningFamily,p_revision:2});
   assert.equal((await state(win,winningDb)).coverage,"needs_driver");
-  assert.equal(await ok(losingDb,"consent_for_own_children",{...ploss,p_family_id:losingFamily,p_child_ids:[losingChild]}),"confirmed","Cancellation releases reservations atomically");
+  assert.equal(await ok(d.db,"accept_driver_proposal",{...ploss,p_available_seats:4,p_restraints:true}),"confirmed","Cancellation releases reservations atomically");
   await ok(d.db,"withdraw_driver",ploss);
   // Nomination and finalization remain safe when the driver self-nominates
   // in a second circle using the same family and vehicle.
   const lockRide=await make({two:false}),lockProposal=await propose(lockRide);
-  await ok(d.db,"accept_driver_proposal",{...lockProposal,p_available_seats:4,p_restraints:true});
   const driverChild=await ok(d.db,"save_own_child",childArgs(fd,"Driver's own child"));
   const selfRide={ride:await ok(d.db,"create_ride",rideArgs(fd,otherCircle,[driverChild])),revision:1};
   const selfNomination=nomination(selfRide,{p_family_id:fd,p_driver_family_id:fd});
@@ -258,7 +269,7 @@ export async function driverPermissionTests(status,sql) {
   async function waitForWaiters(count) {
     for(let attempt=0;attempt<100;attempt++) {
       await blocker.query("select pg_stat_clear_snapshot()");
-      const result=await blocker.query("select count(*)::integer as count from pg_stat_activity where wait_event_type='Lock' and (query like '%propose_driver%' or query like '%consent_for_own_children%')");
+      const result=await blocker.query("select count(*)::integer as count from pg_stat_activity where wait_event_type='Lock' and (query like '%propose_driver%' or query like '%accept_driver_proposal%')");
       if(result.rows[0].count>=count) return;
       await new Promise(resolve=>setTimeout(resolve,25));
     }
@@ -268,7 +279,7 @@ export async function driverPermissionTests(status,sql) {
     await blocker.query("begin");await blocker.query("select id from public.vehicles where id=$1 for update",[car]);
     const nominating=d.db.rpc("propose_driver",selfNomination).then(r=>r);
     await waitForWaiters(1);
-    const confirming=a.db.rpc("consent_for_own_children",{...lockProposal,p_family_id:fa,p_child_ids:[ca]}).then(r=>r);
+    const confirming=d.db.rpc("accept_driver_proposal",{...lockProposal,p_available_seats:4,p_restraints:true}).then(r=>r);
     await waitForWaiters(2);await blocker.query("commit");
     const operations=await Promise.all([nominating,confirming]);operations.forEach(r=>assert.ifError(r.error));
     assert.equal(operations[1].data,"confirmed");
@@ -279,16 +290,95 @@ export async function driverPermissionTests(status,sql) {
   const adjacent=[];
   for(const offset of [3,4]) {
     const rr=await make({two:false,start:hoursFrom(rideStart,offset),end:hoursFrom(rideStart,offset+1)}),pp=await propose(rr);adjacent.push(pp);
-    await ok(a.db,"consent_for_own_children",{...pp,p_family_id:fa,p_child_ids:[ca]});await ok(d.db,"accept_driver_proposal",{...pp,p_available_seats:4,p_restraints:true});
+    assert.equal(await ok(d.db,"accept_driver_proposal",{...pp,p_available_seats:4,p_restraints:true}),"confirmed");
   }
   for(const pp of adjacent) await ok(d.db,"withdraw_driver",pp);
-  // Cancellation races the final reply; either ordering leaves no active assignment.
+  // Cancellation races the confirming reply; either ordering leaves no active assignment.
   const cr=await make({two:false}),pc=await propose(cr);
-  await ok(d.db,"accept_driver_proposal",{...pc,p_available_seats:4,p_restraints:true});
-  const cancellation=await Promise.all([a.db.rpc("cancel_ride",{p_ride_id:cr.ride,p_family_id:fa,p_revision:2}),a.db.rpc("consent_for_own_children",{...pc,p_family_id:fa,p_child_ids:[ca]})]);
+  const cancellation=await Promise.all([a.db.rpc("cancel_ride",{p_ride_id:cr.ride,p_family_id:fa,p_revision:2}),d.db.rpc("accept_driver_proposal",{...pc,p_available_seats:4,p_restraints:true})]);
   assert.ifError(cancellation[0].error);
   assert.equal(sql(`select count(*) from public.driver_assignments where ride_id='${cr.ride}' and released_at is null`),"0");
   assert.equal(sql(`select count(*) from public.driver_proposals where ride_id='${cr.ride}' and status='pending'`),"0");
+
+  // Simpler coordination. An unanswered invitation does not stop an adult
+  // already on the ride from offering, and the offer confirms at once.
+  const revisionOf=async(ride,db=a.db)=>(await ok(db,"ride_offer",{p_id:ride}))[0].revision;
+  const riders=ride=>sql(`select count(*) from public.ride_riders where ride_id='${ride}'`);
+  const slot=n=>({start:hoursFrom(rideStart,10+2*n),end:hoursFrom(rideStart,11+2*n)});
+  const open=await make({respond:false,...slot(0)});
+  assert.deepEqual(await ok(a.db,"drive_offer_details",{p_ride_ids:[open.ride]}),
+    [{ride_id:open.ride,ride_revision:1,rider_count:1,booster_count:1,child_seat_count:0}],"A ride with an unanswered invitation is open to an offer");
+  assert.deepEqual(await ok(d.db,"drive_offer_details",{p_ride_ids:[open.ride]}),[],"Offer details stay with families riding");
+  const offer={p_id:crypto.randomUUID(),p_ride_id:open.ride,p_family_id:fa,p_revision:1,p_vehicle_id:ownCar,p_vehicle_version:1,p_available_seats:2,p_restraints:true};
+  assert.equal(await ok(a.db,"offer_to_drive",offer),offer.p_id);
+  assert.equal(await ok(a.db,"offer_to_drive",offer),offer.p_id,"Identical offer retry is harmless");
+  open.revision=2;
+  let offered=await state(open);
+  assert.equal(offered.coverage,"confirmed","Offer confirms with an unanswered invitation");
+  assert.equal(offered.proposal_status,"confirmed");assert.equal(offered.consent_count,0);assert.equal(offered.rider_count,1);
+  const offeredAssignment=offered.current_assignment_id;assert.ok(offeredAssignment);
+  assert.deepEqual(await ok(a.db,"drive_offer_details",{p_ride_ids:[open.ride]}),[],"A covered ride is no longer on offer");
+  // The invited family sees who is driving before it answers; nobody else does.
+  const seen=await state(open,b.db);
+  assert.equal(seen.coverage,"confirmed");assert.equal(seen.current_driver_name,"Guardian A");assert.equal(seen.is_driver,false);
+  assert.equal((await ok(g.db,"driver_statuses",{p_ride_ids:[open.ride]}))[0].coverage,"confirmed");
+  for(const person of [outsider,d]) {
+    assert.deepEqual(await ok(person.db,"driver_status",{p_ride_id:open.ride}),[]);
+    assert.deepEqual(await ok(person.db,"driver_statuses",{p_ride_ids:[open.ride]}),[]);
+  }
+  for(const table of ["rides","ride_locations","ride_riders","driver_proposals","driver_assignments"])
+    assert.deepEqual((await b.db.from(table).select("*").eq(table==="rides"?"id":"ride_id",open.ride)).data,[],`${table} stays private until the family joins`);
+  // A late join that does not fit the confirmed car is refused and changes nothing.
+  const join={p_ride_id:open.ride,p_family_id:fb,p_revision:2,p_accept:true};
+  const full=await b.db.rpc("respond_to_ride_invitation",{...join,p_child_ids:[cb,cb2]});
+  assert.equal(full.error?.code,"PT422");assert.equal(full.error.message,"car_full");
+  assert.equal((await ok(b.db,"ride_offer",{p_id:open.ride}))[0].status,"invited");assert.equal(riders(open.ride),"1");
+  offered=await state(open);
+  assert.equal(offered.current_assignment_id,offeredAssignment);assert.equal(offered.coverage,"confirmed");assert.equal(offered.rider_count,1);
+  assert.equal(await revisionOf(open.ride),2);
+  // A late join that fits keeps the driver, the assignment and the ride revision.
+  assert.equal(await ok(b.db,"respond_to_ride_invitation",{...join,p_child_ids:[cb]}),2);
+  offered=await state(open);
+  assert.equal(offered.current_assignment_id,offeredAssignment,"Assignment survives a late join");
+  assert.equal(offered.proposal_id,offer.p_id);assert.equal(offered.coverage,"confirmed");assert.equal(offered.ride_revision,2);
+  assert.equal(offered.rider_count,2);assert.equal(offered.booster_count,2);
+  assert.equal(await revisionOf(open.ride),2,"Ride revision is unchanged by a late join that fits");
+  assert.equal(sql(`select count(*) from public.driver_assignments where ride_id='${open.ride}' and released_at is null`),"1");
+  // The joined family may change riders with a driver set, within the seats offered.
+  const change={p_ride_id:open.ride,p_family_id:fb,p_revision:2};
+  await denied(b.db,"set_own_ride_riders",{...change,p_child_ids:[cb,cb2]},"PT422");
+  assert.equal(riders(open.ride),"2");assert.equal((await state(open)).rider_count,2);
+  assert.equal(await ok(g.db,"set_own_ride_riders",{...change,p_child_ids:[cb2]}),2);
+  assert.equal((await state(open)).rider_count,2);assert.equal((await state(open)).current_assignment_id,offeredAssignment);
+  // It may take all of its children off; the driver stays for the riders left.
+  assert.equal(await ok(b.db,"set_own_ride_riders",{...change,p_child_ids:[]}),2);
+  assert.equal((await ok(b.db,"ride_offer",{p_id:open.ride}))[0].status,"withdrawn");
+  offered=await state(open);
+  assert.equal(offered.coverage,"confirmed");assert.equal(offered.rider_count,1);assert.equal(offered.current_assignment_id,offeredAssignment);
+  assert.deepEqual(await ok(b.db,"driver_status",{p_ride_id:open.ride}),[],"A family that left no longer reads the driver");
+  // When the last rider leaves there is nothing to drive: the driver is released.
+  assert.equal(await ok(a.db,"set_own_ride_riders",{p_ride_id:open.ride,p_family_id:fa,p_revision:2,p_child_ids:[]}),3);
+  assert.equal(sql(`select release_reason from public.driver_assignments where id='${offeredAssignment}'`),"invalidated");
+  assert.equal(sql(`select status from public.driver_proposals where id='${offer.p_id}'`),"invalidated");
+  assert.equal(riders(open.ride),"0");
+  // A late join that outgrows a car that was only asked for reopens the ride.
+  const tight=await make({respond:false,...slot(1)});
+  const asked=await propose(tight,{p_vehicle_id:small});
+  assert.equal(await ok(b.db,"respond_to_ride_invitation",{p_ride_id:tight.ride,p_family_id:fb,p_revision:asked.p_revision,p_accept:true,p_child_ids:[cb]}),asked.p_revision+1,"Revision moves when the request is dropped");
+  const reopened=await state(tight);
+  assert.equal(reopened.proposal_id,asked.p_id);assert.equal(reopened.proposal_status,"invalidated");assert.equal(reopened.coverage,"needs_driver");
+  await denied(d.db,"accept_driver_proposal",{...asked,p_available_seats:1,p_restraints:true},"PT409");
+  assert.equal((await ok(a.db,"drive_offer_details",{p_ride_ids:[tight.ride]})).length,1,"The ride is open to a new driver");
+  // A late join that still fits a pending request keeps it; the driver answers for the new roster.
+  const roomy=await make({respond:false,...slot(2)});
+  const kept=await propose(roomy);
+  assert.equal(await ok(b.db,"respond_to_ride_invitation",{p_ride_id:roomy.ride,p_family_id:fb,p_revision:kept.p_revision,p_accept:true,p_child_ids:[cb,cb2]}),kept.p_revision);
+  assert.equal((await state(roomy,d.db)).proposal_id,kept.p_id);assert.equal((await state(roomy,d.db)).proposal_status,"pending");assert.equal((await state(roomy,d.db)).rider_count,3);
+  await denied(d.db,"accept_driver_proposal",{...kept,p_available_seats:2,p_restraints:true},"PT422");
+  assert.equal(await ok(d.db,"accept_driver_proposal",{...kept,p_available_seats:3,p_restraints:true}),"confirmed");
+  assert.equal(await ok(b.db,"set_own_ride_riders",{p_ride_id:roomy.ride,p_family_id:fb,p_revision:kept.p_revision,p_child_ids:[cb2]}),kept.p_revision);
+  assert.equal((await state(roomy)).coverage,"confirmed");assert.equal((await state(roomy)).rider_count,2);
+  await ok(d.db,"withdraw_driver",kept);
 
   // Removal of the consenting guardian closes coverage even with live JWTs.
   const mr=await make(),pm=await propose(mr);
@@ -327,5 +417,5 @@ export async function driverPermissionTests(status,sql) {
   assert.ok((await a.db.schema("pool_private").rpc("finalize_driver",{p_id:p.p_id})).error);
   assert.equal(sql("select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.prosecdef"),"0");
   assert.equal(sql("select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='pool_private' and p.prosecdef and not ('search_path=\"\"'=any(p.proconfig))"),"0");
-  console.log("R5 real-session checks passed: separate acceptance/child consent, private projections, frozen revisions, capacity/restraints, deadlines, duplicates, concurrent assignment/conflicts, cancellation and membership/consent invalidation.");
+  console.log("R5 real-session checks passed: driver acceptance confirms, optional child consent, unanswered invitations, late joins and rider changes, private projections, frozen revisions, capacity/restraints, deadlines, duplicates, concurrent assignment/conflicts, cancellation and membership/consent invalidation.");
 }

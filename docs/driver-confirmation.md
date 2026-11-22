@@ -1,5 +1,8 @@
 # Driver confirmation (R5 / M1)
 
+> The consent and "every family must answer" rules below were replaced by
+> [driver-coordination.md](driver-coordination.md). Read that first.
+
 R5 is stacked on [R4 #6](https://github.com/UWorldJK/pool/pull/6), branch
 `lkluge/ride-planning` at `5f83da1`. That parent includes R1, R2 and R3.
 Review R5 against R4; retarget and revalidate as predecessors merge. CI includes

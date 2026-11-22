@@ -6,9 +6,34 @@ import {
   family,
   invitation,
   openAndCheck,
+  joinInvitation,
+  joinButton,
+  invitationHeading,
+  expectToast,
   submitSignIn,
 } from "./helpers.mjs";
 import { test, expect } from "@playwright/test";
+
+const invitationNotFound =
+  "Pool couldn’t find an invitation for this link and this account.";
+const notAvailable = (page) =>
+  page.getByRole("heading", { level: 1, name: "Not available", exact: true });
+const guardians = (page) => page.getByRole("list", { name: "Guardians" });
+const families = (page) => page.getByRole("list", { name: "Families" });
+
+async function createCircle(page, name) {
+  const dialog = await openAction(page, "Create a circle");
+  await dialog.getByLabel("Circle name", { exact: true }).fill(name);
+  await dialog
+    .getByRole("button", { name: "Create circle", exact: true })
+    .click();
+  // The new circle opens in place of the family page; nothing else to press.
+  await expectToast(page, "Circle created");
+  await expect(page).toHaveURL(/\/app\/circles\/[a-f0-9-]{36}$/);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(name);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  return page.url();
+}
 
 test("two real families and a guardian use manual invitations, explicit acceptance, persisted rosters and removal", async ({
   browser,
@@ -27,18 +52,7 @@ test("two real families and a guardian use manual invitations, explicit acceptan
       "Elm browser family",
       "Elm adult",
     );
-    await openAction(owner.page, "Create a circle");
-    await owner.page.getByLabel("Circle name").fill("Morning browser circle");
-    await owner.page
-      .getByRole("button", { name: "Create circle", exact: true })
-      .click();
-    await owner.page
-      .getByRole("link", { name: "Open saved membership" })
-      .click();
-    await expect(owner.page.getByRole("heading", { level: 1 })).toHaveText(
-      "Morning browser circle",
-    );
-    const circleUrl = owner.page.url();
+    const circleUrl = await createCircle(owner.page, "Morning browser circle");
     const circleLink = await invitation(owner.page, other.email, "circle");
     await owner.context.grantPermissions(["clipboard-read", "clipboard-write"]);
     await owner.page
@@ -53,48 +67,53 @@ test("two real families and a guardian use manual invitations, explicit acceptan
     ).toBe(true);
     await openAndCheck(guardian.page, circleLink);
     await expect(guardian.page.locator('[role="alert"]')).toContainText(
-      "unavailable to this account",
+      invitationNotFound,
     );
+    await expect(invitationHeading(guardian.page)).toHaveCount(0);
+    await expect(joinButton(guardian.page)).toHaveCount(0);
     await openAndCheck(other.page, circleLink);
     await expect(
       other.page.getByRole("heading", {
         name: "Join circle: Morning browser circle",
       }),
     ).toBeVisible();
-    await expect(other.page.getByRole("option", { name: "Create a new family" })).toHaveCount(0);
-    await other.page.getByLabel("Your display name").fill("Elm adult");
-    await other.page
-      .getByLabel("Family to join the circle")
-      .selectOption({ label: "Elm browser family" });
-    await other.page
-      .getByLabel("I explicitly accept this circle family membership.")
-      .check();
-    await other.page
-      .getByRole("button", { name: "Accept invitation", exact: true })
-      .click();
+    // An adult who owns a family joins with it; no second family is offered.
+    await expect(
+      other.page.getByLabel("Family name", { exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      other.page.getByText("Elm browser family will join this circle."),
+    ).toBeVisible();
+    await expect(
+      other.page.getByLabel("Your name", { exact: true }),
+    ).toHaveCount(0);
+    await joinInvitation(other.page, "Morning browser circle");
+    await expectToast(other.page, "You joined Morning browser circle");
+    await expect(other.page).toHaveURL(otherFamilyUrl);
     await expect(other.page.getByRole("heading", { level: 1 })).toHaveText(
       "Elm browser family",
     );
     await visit(other.page, circleUrl);
     await refresh(other.page);
     await expect(
-      other.page.getByText("Oak browser family", { exact: false }).first(),
+      families(other.page).getByText("Oak browser family", { exact: true }),
     ).toBeVisible();
     await expect(
-      other.page.getByText("Elm browser family", { exact: false }).first(),
+      families(other.page).getByText("Elm browser family", { exact: true }),
     ).toBeVisible();
     await expect(
-      other.page.getByRole("button", { name: "Create circle invitation" }),
+      other.page.getByRole("button", { name: "Invite a family" }),
     ).toHaveCount(0);
     await visit(owner.page, circleUrl);
     const guardianCircleLink = await invitation(owner.page, guardian.email, "circle");
     await openAndCheck(guardian.page, guardianCircleLink);
-    await expect(guardian.page.getByRole("option", { name: "Create a new family" })).toBeAttached();
+    // An adult without a family names a new one while joining the circle.
+    await expect(
+      guardian.page.getByLabel("Your name", { exact: true }),
+    ).toBeVisible();
     await expect(guardian.page.getByLabel("Family name", { exact: true })).toBeVisible();
     await visit(other.page, ownerFamilyUrl);
-    await expect(
-      other.page.getByRole("heading", { name: "Membership unavailable" }),
-    ).toBeVisible();
+    await expect(notAvailable(other.page)).toBeVisible();
     await visit(owner.page, ownerFamilyUrl);
     const guardianLink = await invitation(
       owner.page,
@@ -102,54 +121,77 @@ test("two real families and a guardian use manual invitations, explicit acceptan
       "guardian",
     );
     await openAndCheck(guardian.page, guardianLink);
-    await guardian.page.getByLabel("Your display name").fill("Oak guardian");
-    await guardian.page
-      .getByLabel("I explicitly accept this family guardian membership.")
-      .check();
-    await guardian.page
-      .getByRole("button", { name: "Accept invitation", exact: true })
-      .click();
+    await joinInvitation(guardian.page, "Oak browser family", {
+      display: "Oak guardian",
+    });
+    await expectToast(guardian.page, "You joined Oak browser family");
+    await expect(guardian.page).toHaveURL(ownerFamilyUrl);
     await expect(guardian.page.getByRole("heading", { level: 1 })).toHaveText(
       "Oak browser family",
     );
     await expect(
-      guardian.page.getByText("Oak adult · owner", { exact: false }).first(),
-    ).toBeVisible();
+      guardians(guardian.page)
+        .getByRole("listitem")
+        .filter({ hasText: "Oak adult" }),
+    ).toContainText("Owner");
     await expect(
-      guardian.page.getByRole("button", { name: "Create guardian invitation" }),
+      guardian.page.getByRole("button", { name: "Invite a guardian" }),
     ).toHaveCount(0);
     await refresh(guardian.page);
+    const ownRow = guardians(guardian.page)
+      .getByRole("listitem")
+      .filter({ hasText: "Oak guardian" });
+    await expect(ownRow).toContainText("Guardian");
+    await expect(ownRow.getByText("You", { exact: true })).toBeVisible();
+    await expect(ownRow.getByRole("button")).toHaveCount(0);
+    await visit(guardian.page, "/app");
+    await expect(guardian.page.getByRole("heading", { level: 1 })).toHaveText(
+      "Home",
+    );
     await expect(
       guardian.page
-        .getByText("Oak guardian · guardian", { exact: false })
-        .first(),
+        .getByRole("main")
+        .getByText("Oak browser family", { exact: true }),
     ).toBeVisible();
-    await visit(guardian.page, "/app");
-    await expect(guardian.page.getByRole("link", { name: /Oak browser family/ })).toBeVisible();
+    await expect(
+      guardian.page.getByRole("link", { name: "My family", exact: true }),
+    ).toHaveAttribute("href", new URL(ownerFamilyUrl).pathname);
     await expect(guardian.page.getByRole("button", { name: /^Create (a )?family$/ })).toHaveCount(0);
 
     await visit(other.page, otherFamilyUrl);
     const conflictingLink = await invitation(other.page, guardian.email, "guardian");
     await openAndCheck(guardian.page, conflictingLink);
-    await guardian.page.getByLabel("Your display name").fill("Oak guardian");
-    await guardian.page.getByRole("checkbox").check();
-    await guardian.page.getByRole("button", { name: "Accept invitation", exact: true }).click();
+    // The account already has a name, so the invitation does not ask again.
+    await expect(
+      guardian.page.getByLabel("Your name", { exact: true }),
+    ).toHaveCount(0);
+    await joinInvitation(guardian.page, "Elm browser family");
     const conflict = guardian.page.getByRole("alert");
-    await expect(conflict).toContainText("This invitation is still unused");
-    await expect(conflict).toContainText("The last owner and any circle coordinator must stay");
+    await expect(conflict).toContainText("this invitation hasn’t been used");
+    await expect(conflict).toContainText(
+      "You can’t leave while you’re its only owner or it organizes a circle.",
+    );
+    await expect(
+      guardian.page.getByRole("main").getByRole("link", { name: "My family" }),
+    ).toHaveAttribute("href", new URL(ownerFamilyUrl).pathname);
+    // The unused invitation is still there after a reload, checked again.
     await refresh(guardian.page);
-    await expect(guardian.page.getByLabel("Invitation link")).toHaveValue(conflictingLink);
-    await guardian.page.getByRole("button", { name: "Check invitation" }).click();
     await expect(guardian.page.getByRole("heading", { name: "Join family: Elm browser family" })).toBeVisible();
+    await expect(
+      guardian.page.getByRole("button", { name: "Join Elm browser family", exact: true }),
+    ).toBeVisible();
 
     await openAndCheck(guardian.page, guardianCircleLink);
-    await expect(guardian.page.getByRole("status")).toContainText("Ask the circle coordinator");
-    await expect(guardian.page.getByRole("button", { name: "Accept invitation", exact: true })).toHaveCount(0);
+    await expect(
+      guardian.page.getByRole("main").getByRole("status"),
+    ).toContainText("Only a family’s owner can add it to a circle.");
+    await expect(joinButton(guardian.page)).toHaveCount(0);
     // Reuse fails, and revocation is visible without exposing invitation email lists.
     await openAndCheck(guardian.page, guardianLink);
     await expect(guardian.page.locator('[role="alert"]')).toContainText(
-      "already been used",
+      "expired, was revoked or was already used",
     );
+    await expect(joinButton(guardian.page)).toHaveCount(0);
     await refresh(owner.page);
     const revokedLink = await invitation(
       owner.page,
@@ -157,39 +199,82 @@ test("two real families and a guardian use manual invitations, explicit acceptan
       "guardian",
     );
     await refresh(owner.page);
-    await owner.page
+    const pending = owner.page
+      .getByRole("list", { name: "Pending invitations" })
+      .getByRole("listitem")
+      .filter({ hasText: guardian.email });
+    await expect(pending).toHaveCount(1);
+    await expect(pending).toContainText("Pending");
+    await expect(pending).toContainText(/Expires [A-Z][a-z]{2} \d{1,2}/);
+    const revoke = await openAction(
+      owner.page,
+      "Revoke invitation",
+      pending.getByRole("button", { name: "Revoke", exact: true }),
+    );
+    await revoke
       .getByRole("button", { name: "Revoke invitation", exact: true })
       .click();
+    await expectToast(owner.page, "Invitation revoked");
+    await expect(revoke).toHaveCount(0);
+    await expect(pending).toHaveCount(0);
     await openAndCheck(guardian.page, revokedLink);
     await expect(guardian.page.locator('[role="alert"]')).toContainText(
-      "revoked",
+      "This invitation has expired, was revoked or was already used. Ask for a new link.",
     );
+    await expect(joinButton(guardian.page)).toHaveCount(0);
     await refresh(owner.page);
-    const guardianRow = owner.page
+    await expect(
+      owner.page
+        .getByRole("list", { name: "Earlier invitations" })
+        .getByRole("listitem")
+        .filter({ hasText: "Revoked" }),
+    ).toContainText(guardian.email);
+    const guardianRow = guardians(owner.page)
       .getByRole("listitem")
-      .filter({ hasText: "Oak guardian · guardian" });
-    await guardianRow.getByRole("checkbox").check();
-    await guardianRow
+      .filter({ hasText: "Oak guardian" });
+    const removeGuardian = await openAction(
+      owner.page,
+      "Remove Oak guardian",
+      guardianRow.getByRole("button", { name: "Remove", exact: true }),
+    );
+    // Removal needs its one plain confirmation.
+    await removeGuardian
       .getByRole("button", { name: "Remove guardian", exact: true })
       .click();
+    await expect(removeGuardian.getByRole("alert")).toHaveText(
+      "Tick “Remove Oak guardian from the family” to continue.",
+    );
+    await removeGuardian
+      .getByLabel("Remove Oak guardian from the family")
+      .check();
+    await removeGuardian
+      .getByRole("button", { name: "Remove guardian", exact: true })
+      .click();
+    await expectToast(owner.page, "Oak guardian removed");
+    await expect(removeGuardian).toHaveCount(0);
     await expect(guardianRow).toHaveCount(0);
     await visit(guardian.page, ownerFamilyUrl);
-    await expect(
-      guardian.page.getByRole("heading", { name: "Membership unavailable" }),
-    ).toBeVisible();
+    await expect(notAvailable(guardian.page)).toBeVisible();
     await visit(owner.page, circleUrl);
-    const otherRow = owner.page
+    const otherRow = families(owner.page)
       .getByRole("listitem")
       .filter({ hasText: "Elm browser family" });
-    await otherRow.getByRole("checkbox").check();
-    await otherRow
-      .getByRole("button", { name: "Remove family from circle", exact: true })
+    const removeFamily = await openAction(
+      owner.page,
+      "Remove Elm browser family",
+      otherRow.getByRole("button", { name: "Remove", exact: true }),
+    );
+    await removeFamily
+      .getByLabel("Remove Elm browser family from Morning browser circle")
+      .check();
+    await removeFamily
+      .getByRole("button", { name: "Remove family", exact: true })
       .click();
+    await expectToast(owner.page, "Elm browser family removed");
+    await expect(removeFamily).toHaveCount(0);
     await expect(otherRow).toHaveCount(0);
     await visit(other.page, circleUrl);
-    await expect(
-      other.page.getByRole("heading", { name: "Membership unavailable" }),
-    ).toBeVisible();
+    await expect(notAvailable(other.page)).toBeVisible();
     await visit(other.page, otherFamilyUrl);
     await other.page.setViewportSize({ width: 390, height: 844 });
     await expect
@@ -229,24 +314,28 @@ test("Profile retries a failed membership read and creates directly into My fami
     );
     await page.reload();
     await expect(page.getByRole("alert")).toHaveText(
-      "Your family membership could not be loaded.",
+      "Pool couldn’t load your family. Check your connection and try again.",
     );
     await expect(
-      page.getByRole("button", { name: "Create a family", exact: true }),
+      page.getByRole("button", { name: "Create family", exact: true }),
     ).toHaveCount(0);
     await page.unroute(membershipRequest);
-    await page.getByRole("button", { name: "Retry membership" }).click();
+    await page.getByRole("button", { name: "Try again", exact: true }).click();
     await expect(
-      page.getByRole("link", { name: "Join a family", exact: true }),
+      page.getByRole("heading", { level: 1, name: "Welcome to Pool" }),
     ).toBeVisible();
-    await page
-      .getByRole("button", { name: "Create a family", exact: true })
-      .click();
+    await expect(
+      page.getByRole("link", {
+        name: "Join with an invitation link",
+        exact: true,
+      }),
+    ).toBeVisible();
     await expect(
       page.getByText(
-        "Your name is the personal name other guardians will see.",
+        "Start with your family: the adults and children in your household.",
       ),
     ).toBeVisible();
+    // The welcome form is already open: no button to reveal it.
     await page.getByLabel("Your name", { exact: true }).fill("Profile adult");
     await page
       .getByLabel("Family name", { exact: true })
@@ -254,10 +343,16 @@ test("Profile retries a failed membership read and creates directly into My fami
     await page
       .getByRole("button", { name: "Create family", exact: true })
       .click();
+    await expectToast(page, "Family created");
+    await expect(page).toHaveURL(/\/app\/families\/[a-f0-9-]{36}$/);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(
       "Profile family",
     );
-    await expect(page.getByText("Profile adult · owner")).toBeVisible();
+    const ownRow = guardians(page)
+      .getByRole("listitem")
+      .filter({ hasText: "Profile adult" });
+    await expect(ownRow).toContainText("Owner");
+    await expect(ownRow.getByText("You", { exact: true })).toBeVisible();
     await page.getByRole("link", { name: "Home", exact: true }).click();
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Home");
     await page.getByRole("link", { name: "My family", exact: true }).click();
@@ -293,25 +388,29 @@ test("a copied guardian link survives sign-in and account switching", async ({
     expect(copied).toBe(link);
 
     await recipient.page
-      .getByRole("link", { name: "Join a family", exact: true })
+      .getByRole("link", { name: "Join with an invitation link", exact: true })
       .click();
-    const field = recipient.page.getByLabel("Invitation link");
+    await expect(recipient.page).toHaveURL(/\/app\/invitations$/);
+    const field = recipient.page.getByLabel("Invitation link", { exact: true });
+    const check = recipient.page.getByRole("button", {
+      name: "Check invitation",
+      exact: true,
+    });
     await field.fill("https://example.test/app/rides/new#invalid");
-    await recipient.page
-      .getByRole("button", { name: "Check invitation" })
-      .click();
+    await check.click();
     await expect(recipient.page.getByRole("alert")).toContainText(
-      "Paste the full Pool invitation link",
+      "That isn’t a full Pool invitation link.",
     );
+    await expect(joinButton(recipient.page)).toHaveCount(0);
+    // A complete link is checked as soon as it is pasted.
     await field.fill(copied);
-    await recipient.page
-      .getByRole("button", { name: "Check invitation" })
-      .click();
     await expect(
       recipient.page.getByRole("heading", {
         name: "Join family: Copied-link family",
       }),
     ).toBeVisible();
+    await expect(check).toHaveCount(0);
+    await expect(field).toHaveCount(0);
 
     const page = await signedOut.newPage();
     await page.goto("/sign-in");
@@ -325,10 +424,9 @@ test("a copied guardian link survives sign-in and account switching", async ({
     ).toBeVisible();
     await submitSignIn(page, wrong.email);
     await expect(page).toHaveURL(/\/app\/invitations$/);
-    await expect(page.getByLabel("Invitation link")).toHaveValue(copied);
-    await page.getByRole("button", { name: "Check invitation" }).click();
-    await expect(page.getByRole("alert")).toContainText(
-      "unavailable to this account",
+    await expect(page.getByRole("alert")).toContainText(invitationNotFound);
+    await expect(page.getByLabel("Invitation link", { exact: true })).toHaveValue(
+      copied,
     );
     await expect(
       page.getByText(`You’re signed in as ${wrong.email}.`, { exact: false }),
@@ -336,24 +434,24 @@ test("a copied guardian link survives sign-in and account switching", async ({
     await expect(
       page.getByRole("heading", { name: /Copied-link family/ }),
     ).toHaveCount(0);
+    await expect(joinButton(page)).toHaveCount(0);
     await page.getByRole("button", { name: "Use a different account" }).click();
     await submitSignIn(page, recipient.email);
     await expect(page).toHaveURL(/\/app\/invitations$/);
-    await expect(page.getByLabel("Invitation link")).toHaveValue(copied);
     await expect(
-      page.getByRole("button", { name: "Accept invitation", exact: true }),
-    ).toHaveCount(0);
-    await page.getByRole("button", { name: "Check invitation" }).click();
-    await page.getByLabel("Your display name").fill("Invited adult");
-    await page.getByRole("checkbox").check();
-    await page
-      .getByRole("button", { name: "Accept invitation", exact: true })
-      .click();
+      page.getByRole("heading", { name: "Join family: Copied-link family" }),
+    ).toBeVisible();
+    await joinInvitation(page, "Copied-link family", {
+      display: "Invited adult",
+    });
+    await expectToast(page, "You joined Copied-link family");
     await expect(page).toHaveURL(familyUrl);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(
       "Copied-link family",
     );
-    await expect(page.getByText("Invited adult · guardian")).toBeVisible();
+    await expect(
+      guardians(page).getByRole("listitem").filter({ hasText: "Invited adult" }),
+    ).toContainText("Guardian");
   } finally {
     await Promise.all([
       owner.context.close(),
@@ -371,18 +469,7 @@ test("an adult can create their own family while accepting a circle invitation",
   const recipient = await account(browser, "circle-onboarding-recipient");
   try {
     await family(owner.page, "Coordinating family", "Circle coordinator");
-    await openAction(owner.page, "Create a circle");
-    await owner.page.getByLabel("Circle name").fill("Onboarding circle");
-    await owner.page
-      .getByRole("button", { name: "Create circle", exact: true })
-      .click();
-    await owner.page
-      .getByRole("link", { name: "Open saved membership" })
-      .click();
-    await expect(owner.page.getByRole("heading", { level: 1 })).toHaveText(
-      "Onboarding circle",
-    );
-    const circleUrl = owner.page.url();
+    const circleUrl = await createCircle(owner.page, "Onboarding circle");
     await openAndCheck(
       recipient.page,
       await invitation(owner.page, recipient.email, "circle"),
@@ -392,21 +479,24 @@ test("an adult can create their own family while accepting a circle invitation",
         name: "Join circle: Onboarding circle",
       }),
     ).toBeVisible();
-    await recipient.page.getByLabel("Your display name").fill("Circle invitee");
-    await recipient.page
-      .getByLabel("Family name", { exact: true })
-      .fill("New circle family");
-    await recipient.page.getByRole("checkbox").check();
-    await recipient.page
-      .getByRole("button", { name: "Accept invitation", exact: true })
-      .click();
+    await joinInvitation(recipient.page, "Onboarding circle", {
+      display: "Circle invitee",
+      familyName: "New circle family",
+    });
+    await expectToast(recipient.page, "You joined Onboarding circle");
     await expect(recipient.page.getByRole("heading", { level: 1 })).toHaveText(
       "New circle family",
     );
     await visit(recipient.page, circleUrl);
+    const ownRow = families(recipient.page)
+      .getByRole("listitem")
+      .filter({ hasText: "New circle family" });
+    await expect(ownRow.getByText("Your family", { exact: true })).toBeVisible();
     await expect(
-      recipient.page.getByText("New circle family", { exact: true }),
-    ).toBeVisible();
+      families(recipient.page)
+        .getByRole("listitem")
+        .filter({ hasText: "Coordinating family" }),
+    ).toContainText("Organizer");
   } finally {
     await Promise.all([owner.context.close(), recipient.context.close()]);
   }

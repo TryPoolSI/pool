@@ -17,12 +17,17 @@ export function PasteInvitation() {
   const [link, setLink] = useState("");
   return (
     <>
-      <UI.Button onPress={() => setOpen(!open)}>
+      <UI.Button
+        className="quiet"
+        style={{ paddingHorizontal: 0 }}
+        onPress={() => setOpen(!open)}
+      >
         Have an invitation link?
       </UI.Button>
       {open && (
         <CommandForm
           label="Use invitation link"
+          secondary
           action={async () => {
             const valid = invitationParts(link);
             try {
@@ -30,7 +35,7 @@ export function PasteInvitation() {
             } catch {
               return {
                 error:
-                  "Pool could not save the link. Try again, or sign in and paste it under Invitations.",
+                  "Pool couldn’t keep that link. Try again, or sign in first and paste it under Invitations.",
               };
             }
             if (!valid) return { error: invalidInvitationLink };

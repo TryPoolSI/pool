@@ -56,17 +56,17 @@ test("a failed background refresh retains the mounted draft and request identity
   });
   await waitFor(() =>
     expect(
-      screen.getByText(/Displayed information may be out of date/),
+      screen.getByText(/this may be out of date/),
     ).toBeTruthy(),
   );
   expect(screen.getByLabelText("Child display name").props.value).toBe(
     "Draft child",
   );
   load.mockResolvedValue({ model: { request: "new-query-value" } });
-  await fireEvent.press(screen.getByRole("button", { name: "Retry refresh" }));
+  await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
   await waitFor(() =>
     expect(
-      screen.queryByText(/Displayed information may be out of date/),
+      screen.queryByText(/this may be out of date/),
     ).toBeNull(),
   );
   await fireEvent.press(screen.getByRole("button", { name: "Save" }));

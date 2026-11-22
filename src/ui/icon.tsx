@@ -26,6 +26,16 @@ const paths = {
   dot: "M12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Z",
   ring: "M12 6a6 6 0 1 0 0 12 6 6 0 0 0 0-12Z",
   flag: "M6 21V4h11l-2.5 4L17 12H6",
+  user: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 9v-1a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v1",
+  mail: "M4 6h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1Zm-1 1.5 9 6 9-6",
+  clock: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0-14v5l3 2",
+  pin: "M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.800 7 11 7 11Zm0-8.500a2.500 2.500 0 1 0 0-5 2.500 2.500 0 0 0 0 5Z",
+  seat: "M7 4h6a2 2 0 0 1 2 2v7H7V4Zm-2 9h12a2 2 0 0 1 2 2v2H5v-4Zm2 4v3m10-3v3",
+  copy: "M9 9h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V10a1 1 0 0 1 1-1Zm-4 6H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1",
+  swap: "M7 4 3 8l4 4M3 8h14m0 12 4-4-4-4m4 4H7",
+  // Side view, for a family's cars. `car` (front view) stands for driving.
+  "car-side":
+    "M5 17H3v-4l2-1 2.5-6h7L18 12l3 1v4h-2M9 17h6M5 12h13M7 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm10 0a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z",
 };
 export function Icon({
   name,

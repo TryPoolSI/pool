@@ -4,7 +4,11 @@ import { revalidatePath } from "@/services/cache";
 import { createClient } from "@/lib/supabase/client";
 import { verifiedUser } from "@/lib/auth/identity";
 import { requiredText, uuid } from "@/lib/membership";
-import { handoffError, type HandoffState } from "@/lib/handoffs";
+import {
+  handoffError,
+  handoffMessage,
+  type HandoffState,
+} from "@/lib/handoffs";
 function integer(data: Fields, name: string, minimum: number) {
   const value = requiredText(data, name, 10);
   if (
@@ -24,6 +28,7 @@ async function executeHandoff(
     const client = await createClient();
     if (!(await verifiedUser(client))) return { error: handoffError("PT401") };
     const command = requiredText(data, "command");
+    // Pressing the button is the confirmation: the form sends this itself.
     if (data.get("confirm") !== "yes") throw new Error("validation");
     const args = {
       p_ride_id: uuid(data, "ride_id"),
@@ -59,12 +64,7 @@ async function executeHandoff(
     }
     if (result.error) return { error: handoffError(result.error.code) };
     revalidatePath("/app", "layout");
-    return {
-      message:
-        command === "designateRecipient"
-          ? "Designated guardian saved."
-          : "Manual report saved. Refresh other sessions to see current progress.",
-    };
+    return { message: handoffMessage(command) };
   } catch (error) {
     return {
       error: handoffError(
